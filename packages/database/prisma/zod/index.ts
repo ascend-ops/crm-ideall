@@ -76,6 +76,24 @@ export const AiChatScalarFieldEnumSchema = z.enum(['id', 'organizationId', 'user
 
 export type AiChatScalarFieldEnum = z.infer<typeof AiChatScalarFieldEnumSchema>;
 
+// File: TenantScalarFieldEnum.schema.ts
+
+export const TenantScalarFieldEnumSchema = z.enum(['id', 'name', 'email', 'createdAt', 'updatedAt'])
+
+export type TenantScalarFieldEnum = z.infer<typeof TenantScalarFieldEnumSchema>;
+
+// File: ProfileScalarFieldEnum.schema.ts
+
+export const ProfileScalarFieldEnumSchema = z.enum(['id', 'tenantId', 'name', 'email', 'role', 'createdAt', 'updatedAt'])
+
+export type ProfileScalarFieldEnum = z.infer<typeof ProfileScalarFieldEnumSchema>;
+
+// File: ClienteScalarFieldEnum.schema.ts
+
+export const ClienteScalarFieldEnumSchema = z.enum(['id', 'tenantId', 'profileId', 'name', 'email', 'codigoPostal', 'endereco', 'telefone', 'nif', 'status', 'produto', 'createdAt', 'updatedAt'])
+
+export type ClienteScalarFieldEnum = z.infer<typeof ClienteScalarFieldEnumSchema>;
+
 // File: SortOrder.schema.ts
 
 export const SortOrderSchema = z.enum(['asc', 'desc'])
@@ -293,4 +311,53 @@ export const AiChatSchema = z.object({
 });
 
 export type AiChatType = z.infer<typeof AiChatSchema>;
+
+
+// File: Tenant.schema.ts
+
+export const TenantSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+export type TenantType = z.infer<typeof TenantSchema>;
+
+
+// File: Profile.schema.ts
+
+export const ProfileSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  name: z.string(),
+  email: z.string(),
+  role: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+export type ProfileType = z.infer<typeof ProfileSchema>;
+
+
+// File: Cliente.schema.ts
+
+export const ClienteSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  profileId: z.string().nullish(),
+  name: z.string(),
+  email: z.string().nullish(),
+  codigoPostal: z.string().nullish(),
+  endereco: z.string().nullish(),
+  telefone: z.string().nullish(),
+  nif: z.string().nullish(),
+  status: z.string(),
+  produto: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+export type ClienteType = z.infer<typeof ClienteSchema>;
 
