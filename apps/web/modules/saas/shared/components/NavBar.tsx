@@ -38,6 +38,12 @@ export function NavBar() {
 			isActive: pathname === basePath,
 		},
 		{
+			label: "Dashboard",
+			href: "/app/dashboard",
+			icon: HomeIcon,
+			isActive: pathname.startsWith("/app/dashboard"),
+		},
+		{
 			label: t("app.menu.aiChatbot"),
 			href: activeOrganization
 				? `/app/${activeOrganization.slug}/chatbot`

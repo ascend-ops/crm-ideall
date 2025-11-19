@@ -35,5 +35,8 @@
 			"prisma-zod-generator",
 			"sharp"
 		]
+	},
+	"dependencies": {
+		"recharts": "^3.4.1"
 	}
 }
