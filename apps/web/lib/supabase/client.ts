@@ -1,4 +1,3 @@
-// lib/supabase/client.ts - SUBSTITUA POR ESTE CÓDIGO
 import { createBrowserClient } from '@supabase/ssr'
 
 export function createClient() {
@@ -8,5 +7,4 @@ export function createClient() {
   )
 }
 
-// Use esta função no seu LoginForm
 export const supabase = createClient()

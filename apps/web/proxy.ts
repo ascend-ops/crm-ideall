@@ -1,4 +1,3 @@
-// proxy.ts - ATUALIZADO
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
@@ -22,11 +21,9 @@ export function proxy(request: NextRequest) {
     }
   )
 
-  // Sincroniza a sessão (IMPORTANTE para cookies)
   supabase.auth.getSession()
 
-  // VERIFICA O COOKIE ESPECÍFICO DO SEU PROJETO
-  const projectId = 'csjfusyklmerbjqkcaqo' // do seu URL do Supabase
+  const projectId = 'csjfusyklmerbjqkcaqo'
   const hasAuthToken = request.cookies.get(`sb-${projectId}-auth-token`)?.value
   
   const pathname = request.nextUrl.pathname

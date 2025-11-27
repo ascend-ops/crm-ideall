@@ -1,4 +1,3 @@
-// dashboard/page.tsx - VERSÃO CORRIGIDA
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -47,7 +46,6 @@ export default function DashboardPage() {
 	const [clientes, setClientes] = useState<Cliente[]>([]);
 	const [loading, setLoading] = useState(true);
 
-	// Debug: verificar cookies
 	useEffect(() => {
 		console.log("🍪 Cookies disponíveis:", document.cookie);
 		console.log("🔍 localStorage:", {
@@ -144,7 +142,6 @@ export default function DashboardPage() {
 		}
 	};
 
-	// Debug: monitorar mudanças de estado
 	useEffect(() => {
 		console.log("🔄 Estado atualizado:", {
 			loading,
