@@ -1,22 +1,26 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+// lib/supabase/server.ts - CORRIGIDO
+import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 
-let supabaseClient: SupabaseClient | null = null;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export function createSupabaseServerClient() {
-	if (supabaseClient) {
-		return supabaseClient;
-	}
+if (!supabaseUrl || !supabaseAnonKey) {
+	throw new Error("Missing Supabase environment variables");
+}
 
-	const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-	const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// Agora TypeScript sabe que são strings
+const validatedSupabaseUrl: string = supabaseUrl;
+const validatedSupabaseAnonKey: string = supabaseAnonKey;
 
-	if (!supabaseUrl || !supabaseAnonKey) {
-		throw new Error(
-			"Supabase environment variables are not set. Please check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
-		);
-	}
+export function createServerClient() {
+	cookies(); // Mantemos para garantir que cookies são carregados
 
-	supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-
-	return supabaseClient;
+	return createClient(validatedSupabaseUrl, validatedSupabaseAnonKey, {
+		auth: {
+			persistSession: true,
+			autoRefreshToken: true,
+			detectSessionInUrl: false,
+		},
+	});
 }

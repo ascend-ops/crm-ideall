@@ -1,17 +1,25 @@
-import { LoginForm } from "@saas/auth/components/LoginForm";
-import { getTranslations } from "next-intl/server";
+import { redirect } from "next/navigation";
+import { createServerClient } from "../../../lib/supabase/server";
+import { LoginForm } from "../../../modules/saas/auth/components/LoginForm";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export default async function LoginPage() {
+	const supabase = createServerClient();
 
-export async function generateMetadata() {
-	const t = await getTranslations();
+	const {
+		data: { session },
+	} = await supabase.auth.getSession();
 
-	return {
-		title: t("auth.login.title"),
-	};
-}
+	if (session) {
+		redirect("/dashboard");
+	}
 
-export default function LoginPage() {
-	return <LoginForm />;
+	return (
+		<div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+			<div className="max-w-md w-full space-y-8">
+				<div className="bg-white p-8 rounded-lg shadow-md">
+					<LoginForm />
+				</div>
+			</div>
+		</div>
+	);
 }

@@ -1,3 +1,35 @@
 {
-	"extends": "@repo/tsconfig/base.json"
+	"compilerOptions": {
+		"lib": ["dom", "dom.iterable", "es6"],
+		"allowJs": true,
+		"skipLibCheck": true,
+		"strict": true,
+		"noEmit": true,
+		"esModuleInterop": true,
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"jsx": "preserve",
+		"incremental": true,
+		"plugins": [
+			{
+				"name": "next"
+			}
+		],
+		"paths": {
+			"@/*": ["./*"],
+			"@repo/*": ["../packages/*"]
+		}
+	},
+	"include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+	"exclude": [
+		"node_modules",
+		"**/node_modules/*",
+		"packages/database/prisma/generated/**/*",
+		"packages/database/prisma/generated/*",
+		"**/*.config.js",
+		"**/*.config.cjs",
+		"**/*.config.mjs"
+	]
 }

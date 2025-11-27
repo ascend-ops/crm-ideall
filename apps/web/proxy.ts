@@ -1,66 +1,60 @@
-import { routing } from "@i18n/routing";
-import { config as appConfig } from "@repo/config";
-import { getSessionCookie } from "better-auth/cookies";
-import { type NextRequest, NextResponse } from "next/server";
-import createMiddleware from "next-intl/middleware";
-import { withQuery } from "ufo";
+// proxy.ts - ATUALIZADO
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
 
-const intlMiddleware = createMiddleware(routing);
+export function proxy(request: NextRequest) {
+  let response = NextResponse.next()
 
-export default async function proxy(req: NextRequest) {
-	const { pathname, origin } = req.nextUrl;
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options)
+          })
+        },
+      },
+    }
+  )
 
-	const sessionCookie = getSessionCookie(req);
+  // Sincroniza a sessão (IMPORTANTE para cookies)
+  supabase.auth.getSession()
 
-	if (pathname.startsWith("/app")) {
-		const response = NextResponse.next();
+  // VERIFICA O COOKIE ESPECÍFICO DO SEU PROJETO
+  const projectId = 'csjfusyklmerbjqkcaqo' // do seu URL do Supabase
+  const hasAuthToken = request.cookies.get(`sb-${projectId}-auth-token`)?.value
+  
+  const pathname = request.nextUrl.pathname
 
-		if (!appConfig.ui.saas.enabled) {
-			return NextResponse.redirect(new URL("/", origin));
-		}
+  console.log("🛡️ Proxy verificando:", {
+    pathname,
+    hasAuthToken: !!hasAuthToken,
+    cookies: request.cookies.getAll().map(c => c.name)
+  })
 
-		if (!sessionCookie) {
-			return NextResponse.redirect(
-				new URL(
-					withQuery("/auth/login", {
-						redirectTo: pathname,
-					}),
-					origin,
-				),
-			);
-		}
+  // Redireciona se já está logado e tenta acessar login
+  if (hasAuthToken && pathname.startsWith("/auth/login")) {
+    console.log("🔀 Redirecionando para dashboard (já logado)")
+    return NextResponse.redirect(new URL("/app/dashboard", request.url))
+  }
 
-		return response;
-	}
+  // Redireciona se não está logado e tenta acessar dashboard
+  if (!hasAuthToken && pathname.startsWith("/app/dashboard")) {
+    console.log("🔀 Redirecionando para login (não logado)")
+    return NextResponse.redirect(new URL("/auth/login", request.url))
+  }
 
-	if (pathname.startsWith("/auth")) {
-		if (!appConfig.ui.saas.enabled) {
-			return NextResponse.redirect(new URL("/", origin));
-		}
-
-		return NextResponse.next();
-	}
-
-	const pathsWithoutLocale = [
-		"/onboarding",
-		"/new-organization",
-		"/choose-plan",
-		"/organization-invitation",
-	];
-
-	if (pathsWithoutLocale.some((path) => pathname.startsWith(path))) {
-		return NextResponse.next();
-	}
-
-	if (!appConfig.ui.marketing.enabled) {
-		return NextResponse.redirect(new URL("/app", origin));
-	}
-
-	return intlMiddleware(req);
+  return response
 }
 
 export const config = {
-	matcher: [
-		"/((?!api|image-proxy|images|fonts|_next/static|_next/image|favicon.ico|icon.png|sitemap.xml|robots.txt).*)",
-	],
-};
+  matcher: [
+    '/app/dashboard/:path*',
+    '/auth/login',
+  ],
+}

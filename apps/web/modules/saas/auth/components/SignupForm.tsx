@@ -79,7 +79,6 @@ export function SignupForm({ prefillEmail }: { prefillEmail?: string }) {
 					})
 				: authClient.signIn.magicLink({
 						email,
-						name,
 						callbackURL: redirectPath,
 					}));
 
