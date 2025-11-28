@@ -10,12 +10,10 @@ export default async function AuthLayout({ children }: PropsWithChildren) {
 	const messages = await getMessages();
 
 	return (
-		<Document locale={locale}>
-			<NextIntlClientProvider messages={messages}>
-				<SessionProvider>
-					<AuthWrapper>{children}</AuthWrapper>
-				</SessionProvider>
-			</NextIntlClientProvider>
-		</Document>
+		<NextIntlClientProvider messages={messages}>
+  			<SessionProvider>
+    			<AuthWrapper>{children}</AuthWrapper>
+  			</SessionProvider>
+		</NextIntlClientProvider>
 	);
 }
