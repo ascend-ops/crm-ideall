@@ -1,8 +1,5 @@
 import { config } from "@repo/config";
-import { createPurchasesHelper } from "@repo/payments/lib/helper";
 import { getSession } from "@saas/auth/lib/server";
-import { orpcClient } from "@shared/lib/orpc-client";
-import { attemptAsync } from "es-toolkit";
 import { redirect } from "next/navigation";
 import type { PropsWithChildren } from "react";
 
@@ -13,10 +10,10 @@ export default async function Layout({ children }: PropsWithChildren) {
 	console.log("🔍 App Layout - verificando sessão...");
 	const session = await getSession();
 	console.log("🔍 App Layout - sessão:", session ? "EXISTE" : "NÃO EXISTE");
-	
+
 	if (!session) {
 		console.log("❌ App Layout - REDIRECIONANDO para login");
-	 	redirect("/auth/login");
+		redirect("/auth/login");
 	}
 
 	// COMENTADO TEMPORARIAMENTE - depende da estrutura do Better Auth

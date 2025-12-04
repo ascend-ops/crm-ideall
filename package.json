@@ -37,6 +37,8 @@
 		]
 	},
 	"dependencies": {
+		"@tanstack/react-query-devtools": "^5.91.1",
+		"flag": "^5.0.1",
 		"recharts": "^3.5.0"
 	}
 }
