@@ -352,23 +352,24 @@ export default function ClientesPage() {
 				className={`fixed top-0 left-0 h-screen bg-white border-r border-gray-200 transition-all duration-300 z-40 ${
 					expanded ? "w-64" : "w-16"
 				} ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
-				onMouseEnter={() => setExpanded(true)}
-				onMouseLeave={() => setExpanded(false)}
 				aria-label="Navegação principal"
 			>
 				<div className="flex flex-col h-full">
-					{/* Header da sidebar */}
-					<div className="p-4 border-b border-gray-200">
-						<div className="flex items-center gap-3">
-							<div className="w-8 h-8 bg-blue-600 rounded-md flex items-center justify-center shrink-0">
-								<span className="text-white font-bold">L</span>
-							</div>
-							{expanded && (
-								<h2 className="font-bold text-lg text-gray-800 truncate">
-									LeadFlow
-								</h2>
-							)}
-						</div>
+					{/* 🔥 BOTÃO DE EXPANDIR/RETRAIR (DESKTOP) */}
+					<div className="p-4 border-b border-gray-200 flex items-center">
+						<button
+							type="button"
+							onClick={() => setExpanded(!expanded)}
+							className="p-2 rounded-md hover:bg-gray-100"
+						>
+							<Menu className="w-5 h-5" />
+						</button>
+
+						{expanded && (
+							<h2 className="ml-3 font-bold text-lg text-gray-800 truncate">
+								LeadFlow
+							</h2>
+						)}
 					</div>
 
 					{/* Menu items */}
