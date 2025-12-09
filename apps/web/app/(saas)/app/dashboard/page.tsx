@@ -164,81 +164,72 @@ export default function DashboardPage() {
 		}
 	};
 
-	const loadGestoresCards = async (tenantId: string) => {
-		console.group("🔍 DEBUG COMPLETO loadGestoresCards");
+	const loadGestoresCards = async (_tenantId: string) => {
+		console.group("🔍 Carregando gestores...");
 
 		try {
-			const {
-				data: { session },
-			} = await supabase.auth.getSession();
-
-			if (!session) {
-				return;
-			}
-
-			const { data: _simpleTest, error: simpleError } = await supabase
-				.from("profiles")
-				.select("id, email")
-				.eq("id", session.user.id)
-				.single();
-
-			if (simpleError) {
-				return;
-			}
-
 			const { data: teamMembers, error } = await supabase
 				.from("profiles")
 				.select('id, name, email, role, "tenantId"')
 				.in("role", ["gestor", "parceiro"])
-				.eq("tenantId", tenantId)
 				.order("role", { ascending: false })
 				.order("name", { ascending: true });
 
-			if (!error && teamMembers) {
-				const gestores = teamMembers.filter((p) => p.role === "gestor");
-
-				const gestoresComDados = await Promise.all(
-					gestores.map(async (gestor) => {
-						const { data: clientesGestor } = await supabase
-							.from("clientes")
-							.select("status, id")
-							.eq("profileId", gestor.id);
-
-						const statusCount = {
-							aprovado: 0,
-							"em análise": 0,
-							"aguardando documentos": 0,
-							reprovado: 0,
-							fidelizado: 0,
-						};
-
-						clientesGestor?.forEach((cliente) => {
-							if (cliente.status in statusCount) {
-								statusCount[
-									cliente.status as keyof typeof statusCount
-								]++;
-							}
-						});
-
-						return {
-							id: gestor.id,
-							name: gestor.name,
-							email: gestor.email,
-							role: gestor.role,
-							totalClientes: clientesGestor?.length || 0,
-							statusCount,
-						};
-					}),
-				);
-
-				const dadosValidos = gestoresComDados.filter(
-					Boolean,
-				) as GestorCardData[];
-
-				setGestoresCards(dadosValidos);
+			if (error) {
+				console.error("❌ Erro ao carregar gestores:", error);
+				setGestoresCards([]);
+				return;
 			}
+
+			console.log(
+				`✅ ${teamMembers?.length || 0} gestores/parceiros encontrados`,
+			);
+
+			// Filtrar apenas gestores para os cards
+			const gestores =
+				teamMembers?.filter((p) => p.role === "gestor") || [];
+
+			// Para cada gestor, buscar seus clientes
+			const gestoresComDados = await Promise.all(
+				gestores.map(async (gestor) => {
+					const { data: clientesGestor } = await supabase
+						.from("clientes")
+						.select("status, id")
+						.eq("profileId", gestor.id);
+
+					const statusCount = {
+						aprovado: 0,
+						"em análise": 0,
+						"aguardando documentos": 0,
+						reprovado: 0,
+						fidelizado: 0,
+					};
+
+					clientesGestor?.forEach((cliente) => {
+						const status =
+							cliente.status as keyof typeof statusCount;
+						if (status in statusCount) {
+							statusCount[status]++;
+						}
+					});
+
+					return {
+						id: gestor.id,
+						name: gestor.name,
+						email: gestor.email,
+						role: gestor.role,
+						totalClientes: clientesGestor?.length || 0,
+						statusCount,
+					};
+				}),
+			);
+
+			setGestoresCards(gestoresComDados);
+			console.log(
+				`🎯 ${gestoresComDados.length} gestores processados com dados`,
+			);
 		} catch (err) {
-			console.error("💥 ERRO INESPERADO em loadGestoresCards:", err);
+			console.error("💥 Erro inesperado:", err);
 			setGestoresCards([]);
 		} finally {
 			console.groupEnd();
