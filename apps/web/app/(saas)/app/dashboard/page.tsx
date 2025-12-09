@@ -134,7 +134,7 @@ export default function DashboardPage() {
 				router.push("/auth/login");
 			}
 		} catch (error) {
-			console.error("💥 Erro inesperado no checkAuth:", error);
+			console.error("❌ Erro inesperado no checkAuth:", error);
 			router.push("/auth/login");
 		} finally {
 			setLoading(false);
@@ -159,7 +159,7 @@ export default function DashboardPage() {
 			);
 			setClientes(data || []);
 		} catch (err) {
-			console.error("💥 Erro inesperado ao carregar clientes:", err);
+			console.error("❌ Erro inesperado ao carregar clientes:", err);
 			setClientes([]);
 		}
 	};
@@ -229,7 +229,7 @@ export default function DashboardPage() {
 				`🎯 ${gestoresComDados.length} gestores processados com dados`,
 			);
 		} catch (err) {
-			console.error("💥 Erro inesperado:", err);
+			console.error("❌ Erro inesperado:", err);
 			setGestoresCards([]);
 		} finally {
 			console.groupEnd();
@@ -299,7 +299,7 @@ export default function DashboardPage() {
 				aria-label="Navegação principal"
 			>
 				<div className="flex flex-col h-full">
-					{/* 🔥 BOTÃO DE EXPANDIR/RETRAIR (DESKTOP) */}
+					{/* BOTÃO DE EXPANDIR/RETRAIR (DESKTOP) */}
 					<div className="p-4 border-b border-gray-200 flex items-center">
 						<button
 							type="button"

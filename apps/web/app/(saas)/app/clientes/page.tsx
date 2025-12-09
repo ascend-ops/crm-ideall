@@ -150,7 +150,7 @@ export default function ClientesPage() {
 
 			let query = supabase.from("clientes").select("*");
 
-			// 🔥 MESMA LÓGICA DA DASHBOARD - IMPORTANTE!
+			// MESMA LÓGICA DA DASHBOARD
 			if (userRole === "tenant") {
 				// Tenant vê TODOS os clientes do seu tenant
 				query = query.eq("tenantId", userId);
@@ -280,6 +280,54 @@ export default function ClientesPage() {
 		);
 	};
 
+	// NOVAS FUNÇÕES PARA OS BOTÕES DE AÇÃO
+	const handleVerDetalhes = (clienteId: string) => {
+		console.log("🔍 Ver detalhes do cliente:", clienteId);
+		alert(`Ver detalhes do cliente ID: ${clienteId}`);
+	};
+
+	const handleEditar = (clienteId: string) => {
+		console.log("✏️ Editar cliente:", clienteId);
+		alert(`Editar cliente ID: ${clienteId}`);
+	};
+
+	const handleDeletar = async (clienteId: string, clienteNome: string) => {
+		console.log("🗑️ Deletar cliente:", clienteId);
+
+		if (
+			!confirm(
+				`Tem certeza que deseja deletar o cliente "${clienteNome}"? Esta ação não pode ser desfeita.`,
+			)
+		) {
+			return;
+		}
+
+		try {
+			const { error } = await supabase
+				.from("clientes")
+				.delete()
+				.eq("id", clienteId);
+
+			if (error) {
+				console.error("❌ Erro ao deletar cliente:", error);
+				alert(`Erro ao deletar cliente: ${error.message}`);
+				return;
+			}
+
+			console.log("✅ Cliente deletado com sucesso");
+
+			// Atualizar a lista de clientes
+			if (profile) {
+				await loadClientes(profile.role, profile.id);
+			}
+
+			alert("Cliente deletado com sucesso!");
+		} catch (err) {
+			console.error("💥 Erro inesperado ao deletar cliente:", err);
+			alert("Erro inesperado ao deletar cliente");
+		}
+	};
+
 	const exportToCSV = () => {
 		const headers = [
 			"Nome",
@@ -355,7 +403,7 @@ export default function ClientesPage() {
 				aria-label="Navegação principal"
 			>
 				<div className="flex flex-col h-full">
-					{/* 🔥 BOTÃO DE EXPANDIR/RETRAIR (DESKTOP) */}
+					{/* BOTÃO DE EXPANDIR/RETRAIR (DESKTOP) */}
 					<div className="p-4 border-b border-gray-200 flex items-center">
 						<button
 							type="button"
@@ -817,7 +865,12 @@ export default function ClientesPage() {
 													<div className="flex items-center gap-2">
 														<button
 															type="button"
-															className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+															onClick={() =>
+																handleVerDetalhes(
+																	cliente.id,
+																)
+															}
+															className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
 															title="Ver detalhes"
 															aria-label={`Ver detalhes do cliente ${cliente.name}`}
 														>
@@ -825,7 +878,12 @@ export default function ClientesPage() {
 														</button>
 														<button
 															type="button"
-															className="p-1 text-green-600 hover:bg-green-50 rounded"
+															onClick={() =>
+																handleEditar(
+																	cliente.id,
+																)
+															}
+															className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
 															title="Editar"
 															aria-label={`Editar cliente ${cliente.name}`}
 														>
@@ -833,7 +891,13 @@ export default function ClientesPage() {
 														</button>
 														<button
 															type="button"
-															className="p-1 text-red-600 hover:bg-red-50 rounded"
+															onClick={() =>
+																handleDeletar(
+																	cliente.id,
+																	cliente.name,
+																)
+															}
+															className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
 															title="Excluir"
 															aria-label={`Excluir cliente ${cliente.name}`}
 														>
