@@ -1,16 +1,25 @@
 "use client";
 
 import {
+	Calendar,
 	ChevronRight,
 	Download,
 	Edit,
 	Eye,
+	FileText,
 	Filter,
+	Globe,
+	Hash,
 	LayoutDashboard,
+	Mail,
+	MapPin,
 	Menu,
+	Phone,
 	Search,
 	Trash2,
+	User as UserIcon,
 	Users,
+	X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -32,7 +41,7 @@ interface Cliente {
 	tenantId: string;
 }
 
-interface User {
+interface SupabaseUser {
 	id: string;
 	email: string;
 	user_metadata?: { role?: string };
@@ -66,7 +75,7 @@ export default function ClientesPage() {
 	const [sidebarOpen, setSidebarOpen] = useState(false);
 	const [expanded, setExpanded] = useState(false);
 
-	const [user, setUser] = useState<User | null>(null);
+	const [user, setUser] = useState<SupabaseUser | null>(null);
 	const [profile, setProfile] = useState<Profile | null>(null);
 	const [clientes, setClientes] = useState<Cliente[]>([]);
 	const [filteredClientes, setFilteredClientes] = useState<Cliente[]>([]);
@@ -79,6 +88,12 @@ export default function ClientesPage() {
 	} | null>(null);
 	const [page, setPage] = useState(1);
 	const itemsPerPage = 20;
+
+	// NOVO: Estado para controlar o modal de detalhes
+	const [modalOpen, setModalOpen] = useState(false);
+	const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(
+		null,
+	);
 
 	useEffect(() => {
 		console.log("🚀 ClientesPage montado - iniciando checkAuth");
@@ -98,7 +113,7 @@ export default function ClientesPage() {
 				return;
 			}
 
-			setUser(session.user as User);
+			setUser(session.user as SupabaseUser);
 			console.log("🔹 USER METADATA:", session.user.user_metadata);
 
 			let role = session.user.user_metadata?.role;
@@ -281,9 +296,10 @@ export default function ClientesPage() {
 	};
 
 	// NOVAS FUNÇÕES PARA OS BOTÕES DE AÇÃO
-	const handleVerDetalhes = (clienteId: string) => {
-		console.log("🔍 Ver detalhes do cliente:", clienteId);
-		alert(`Ver detalhes do cliente ID: ${clienteId}`);
+	const handleVerDetalhes = (cliente: Cliente) => {
+		console.log("🔍 Ver detalhes do cliente:", cliente);
+		setSelectedCliente(cliente);
+		setModalOpen(true);
 	};
 
 	const handleEditar = (clienteId: string) => {
@@ -325,6 +341,32 @@ export default function ClientesPage() {
 		} catch (err) {
 			console.error("💥 Erro inesperado ao deletar cliente:", err);
 			alert("Erro inesperado ao deletar cliente");
+		}
+	};
+
+	// Função para fechar modal
+	const closeModal = () => {
+		setModalOpen(false);
+		setSelectedCliente(null);
+	};
+
+	// Função para lidar com tecla Escape no modal
+	useEffect(() => {
+		const handleEscape = (e: KeyboardEvent) => {
+			if (e.key === "Escape" && modalOpen) {
+				closeModal();
+			}
+		};
+
+		document.addEventListener("keydown", handleEscape);
+		return () => document.removeEventListener("keydown", handleEscape);
+	}, [modalOpen]);
+
+	// Função para lidar com teclado no overlay
+	const handleOverlayKeyDownModal = (e: React.KeyboardEvent) => {
+		if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
+			e.preventDefault();
+			closeModal();
 		}
 	};
 
@@ -867,7 +909,7 @@ export default function ClientesPage() {
 															type="button"
 															onClick={() =>
 																handleVerDetalhes(
-																	cliente.id,
+																	cliente,
 																)
 															}
 															className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
@@ -1056,6 +1098,356 @@ export default function ClientesPage() {
 					</div>
 				</div>
 			</div>
+
+			{/* MODAL DE DETALHES DO CLIENTE */}
+			{modalOpen && selectedCliente && (
+				<>
+					{/* Overlay escuro */}
+					<button
+						type="button"
+						className="fixed inset-0 bg-black/50 z-50 transition-opacity"
+						onClick={closeModal}
+						onKeyDown={handleOverlayKeyDownModal}
+						tabIndex={0}
+						aria-label="Fechar modal"
+					/>
+
+					{/* Modal */}
+					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+						<div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+							{/* Header do Modal */}
+							<div className="flex items-center justify-between p-6 border-b border-gray-200 bg-linear-to-r from-blue-50 to-indigo-50">
+								<div className="flex items-center gap-4">
+									<div className="w-16 h-16 bg-linear-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+										<UserIcon className="w-8 h-8 text-white" />
+									</div>
+									<div>
+										<h2 className="text-2xl font-bold text-gray-900">
+											{selectedCliente.name}
+										</h2>
+										<div className="flex items-center gap-2 mt-1">
+											{getStatusBadge(
+												selectedCliente.status,
+											)}
+											<span className="text-sm text-gray-500">
+												ID:{" "}
+												{selectedCliente.id.substring(
+													0,
+													8,
+												)}
+												...
+											</span>
+										</div>
+									</div>
+								</div>
+								<button
+									type="button"
+									onClick={closeModal}
+									className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+									aria-label="Fechar"
+								>
+									<X className="w-6 h-6 text-gray-500" />
+								</button>
+							</div>
+
+							{/* Conteúdo do Modal */}
+							<div className="overflow-y-auto max-h-[calc(90vh-180px)]">
+								<div className="p-6">
+									{/* Informações Principais */}
+									<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+										{/* Coluna 1 */}
+										<div className="space-y-6">
+											{/* Contato */}
+											<div className="bg-gray-50 p-4 rounded-xl">
+												<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+													<Mail className="w-5 h-5 text-blue-600" />
+													Informações de Contato
+												</h3>
+												<div className="space-y-3">
+													<div className="flex items-center gap-3">
+														<div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+															<Mail className="w-4 h-4 text-blue-600" />
+														</div>
+														<div className="flex-1">
+															<p className="text-sm text-gray-500">
+																Email
+															</p>
+															<p className="font-medium">
+																{
+																	selectedCliente.email
+																}
+															</p>
+														</div>
+													</div>
+													<div className="flex items-center gap-3">
+														<div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+															<Phone className="w-4 h-4 text-green-600" />
+														</div>
+														<div className="flex-1">
+															<p className="text-sm text-gray-500">
+																Telefone
+															</p>
+															<p className="font-medium">
+																{selectedCliente.telefone ||
+																	"Não informado"}
+															</p>
+														</div>
+													</div>
+												</div>
+											</div>
+
+											{/* Documentos */}
+											<div className="bg-gray-50 p-4 rounded-xl">
+												<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+													<FileText className="w-5 h-5 text-purple-600" />
+													Documentos
+												</h3>
+												<div className="space-y-3">
+													<div className="flex items-center gap-3">
+														<div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+															<Hash className="w-4 h-4 text-purple-600" />
+														</div>
+														<div className="flex-1">
+															<p className="text-sm text-gray-500">
+																NIF
+															</p>
+															<p className="font-medium">
+																{selectedCliente.nif ||
+																	"Não informado"}
+															</p>
+														</div>
+													</div>
+												</div>
+											</div>
+										</div>
+
+										{/* Coluna 2 */}
+										<div className="space-y-6">
+											{/* Endereço */}
+											<div className="bg-gray-50 p-4 rounded-xl">
+												<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+													<MapPin className="w-5 h-5 text-red-600" />
+													Endereço
+												</h3>
+												<div className="space-y-3">
+													<div className="flex items-center gap-3">
+														<div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+															<MapPin className="w-4 h-4 text-red-600" />
+														</div>
+														<div className="flex-1">
+															<p className="text-sm text-gray-500">
+																Endereço
+															</p>
+															<p className="font-medium">
+																{selectedCliente.endereco ||
+																	"Não informado"}
+															</p>
+														</div>
+													</div>
+													<div className="flex items-center gap-3">
+														<div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+															<Globe className="w-4 h-4 text-orange-600" />
+														</div>
+														<div className="flex-1">
+															<p className="text-sm text-gray-500">
+																Código Postal
+															</p>
+															<p className="font-medium">
+																{selectedCliente.codigoPostal ||
+																	"Não informado"}
+															</p>
+														</div>
+													</div>
+												</div>
+											</div>
+
+											{/* Produto e Status */}
+											<div className="bg-gray-50 p-4 rounded-xl">
+												<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+													<Globe className="w-5 h-5 text-green-600" />
+													Informações Comerciais
+												</h3>
+												<div className="space-y-3">
+													<div className="flex items-center gap-3">
+														<div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+															<Globe className="w-4 h-4 text-green-600" />
+														</div>
+														<div className="flex-1">
+															<p className="text-sm text-gray-500">
+																Produto
+															</p>
+															<p className="font-medium">
+																{selectedCliente.produto ||
+																	"Não especificado"}
+															</p>
+														</div>
+													</div>
+													<div className="flex items-center gap-3">
+														<div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+															<div
+																className="w-3 h-3 rounded-full"
+																style={{
+																	backgroundColor:
+																		STATUS_COLORS[
+																			selectedCliente.status as keyof typeof STATUS_COLORS
+																		]?.split(
+																			" ",
+																		)[0] ||
+																		"#6b7280",
+																}}
+															/>
+														</div>
+														<div className="flex-1">
+															<p className="text-sm text-gray-500">
+																Status
+															</p>
+															<p className="font-medium capitalize">
+																{
+																	selectedCliente.status
+																}
+															</p>
+														</div>
+													</div>
+												</div>
+											</div>
+										</div>
+									</div>
+
+									{/* Informações de Sistema */}
+									<div className="mt-8 bg-linear-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
+										<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+											<Calendar className="w-5 h-5 text-gray-600" />
+											Informações do Sistema
+										</h3>
+										<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+											<div className="bg-white p-4 rounded-lg border">
+												<p className="text-sm text-gray-500">
+													Data de Criação
+												</p>
+												<p className="font-medium">
+													{new Date(
+														selectedCliente.createdAt,
+													).toLocaleDateString(
+														"pt-BR",
+													)}
+												</p>
+												<p className="text-xs text-gray-400 mt-1">
+													{new Date(
+														selectedCliente.createdAt,
+													).toLocaleTimeString(
+														"pt-BR",
+													)}
+												</p>
+											</div>
+											<div className="bg-white p-4 rounded-lg border">
+												<p className="text-sm text-gray-500">
+													Última Atualização
+												</p>
+												<p className="font-medium">
+													{new Date(
+														selectedCliente.updatedAt,
+													).toLocaleDateString(
+														"pt-BR",
+													)}
+												</p>
+												<p className="text-xs text-gray-400 mt-1">
+													{new Date(
+														selectedCliente.updatedAt,
+													).toLocaleTimeString(
+														"pt-BR",
+													)}
+												</p>
+											</div>
+											<div className="bg-white p-4 rounded-lg border">
+												<p className="text-sm text-gray-500">
+													ID do Perfil Vinculado
+												</p>
+												<p className="font-mono text-sm font-medium truncate">
+													{selectedCliente.profileId ||
+														"Não vinculado"}
+												</p>
+											</div>
+										</div>
+									</div>
+
+									{/* Metadata do Tenant (se disponível) */}
+									{selectedCliente.tenantId && (
+										<div className="mt-6 p-4 bg-linear-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+											<div className="flex items-center gap-3">
+												<div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+													<UserIcon className="w-5 h-5 text-white" />
+												</div>
+												<div>
+													<p className="text-sm text-gray-600">
+														Tenant ID
+													</p>
+													<p className="font-mono text-sm font-semibold">
+														{
+															selectedCliente.tenantId
+														}
+													</p>
+												</div>
+											</div>
+										</div>
+									)}
+								</div>
+							</div>
+
+							{/* Footer do Modal */}
+							<div className="border-t border-gray-200 p-4 bg-gray-50">
+								<div className="flex items-center justify-between">
+									<div className="text-sm text-gray-500">
+										Cliente cadastrado há{" "}
+										{Math.floor(
+											(Date.now() -
+												new Date(
+													selectedCliente.createdAt,
+												).getTime()) /
+												(1000 * 60 * 60 * 24),
+										)}{" "}
+										dias
+									</div>
+									<div className="flex items-center gap-3">
+										<button
+											type="button"
+											onClick={() => {
+												handleEditar(
+													selectedCliente.id,
+												);
+												closeModal();
+											}}
+											className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+										>
+											<Edit size={16} />
+											Editar Cliente
+										</button>
+										<button
+											type="button"
+											onClick={() => {
+												if (
+													confirm(
+														`Tem certeza que deseja excluir ${selectedCliente.name}?`,
+													)
+												) {
+													handleDeletar(
+														selectedCliente.id,
+														selectedCliente.name,
+													);
+													closeModal();
+												}
+											}}
+											className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors flex items-center gap-2"
+										>
+											<Trash2 size={16} />
+											Excluir
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</>
+			)}
 		</div>
 	);
 }
