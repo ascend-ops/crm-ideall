@@ -15,6 +15,7 @@ import {
 	MapPin,
 	Menu,
 	Phone,
+	Save,
 	Search,
 	Trash2,
 	User as UserIcon,
@@ -89,11 +90,16 @@ export default function ClientesPage() {
 	const [page, setPage] = useState(1);
 	const itemsPerPage = 20;
 
-	// NOVO: Estado para controlar o modal de detalhes
-	const [modalOpen, setModalOpen] = useState(false);
+	// Estados para controlar os modais
+	const [modalDetalhesOpen, setModalDetalhesOpen] = useState(false);
+	const [modalEditarOpen, setModalEditarOpen] = useState(false);
 	const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(
 		null,
 	);
+	const [clienteEditando, setClienteEditando] = useState<Cliente | null>(
+		null,
+	);
+	const [editandoLoading, setEditandoLoading] = useState(false);
 
 	useEffect(() => {
 		console.log("🚀 ClientesPage montado - iniciando checkAuth");
@@ -295,16 +301,66 @@ export default function ClientesPage() {
 		);
 	};
 
-	// NOVAS FUNÇÕES PARA OS BOTÕES DE AÇÃO
+	// FUNÇÕES PARA OS BOTÕES DE AÇÃO
 	const handleVerDetalhes = (cliente: Cliente) => {
 		console.log("🔍 Ver detalhes do cliente:", cliente);
 		setSelectedCliente(cliente);
-		setModalOpen(true);
+		setModalDetalhesOpen(true);
 	};
 
-	const handleEditar = (clienteId: string) => {
-		console.log("✏️ Editar cliente:", clienteId);
-		alert(`Editar cliente ID: ${clienteId}`);
+	const handleEditar = (cliente: Cliente) => {
+		console.log("✏️ Abrir edição do cliente:", cliente);
+		setClienteEditando({ ...cliente });
+		setModalEditarOpen(true);
+	};
+
+	const handleSalvarEdicao = async () => {
+		if (!clienteEditando) {
+			return;
+		}
+
+		console.log("💾 Salvando edição do cliente:", clienteEditando);
+		setEditandoLoading(true);
+
+		try {
+			const { error } = await supabase
+				.from("clientes")
+				.update({
+					name: clienteEditando.name,
+					email: clienteEditando.email,
+					telefone: clienteEditando.telefone,
+					nif: clienteEditando.nif,
+					codigoPostal: clienteEditando.codigoPostal,
+					endereco: clienteEditando.endereco,
+					status: clienteEditando.status,
+					produto: clienteEditando.produto,
+					updatedAt: new Date().toISOString(),
+				})
+				.eq("id", clienteEditando.id);
+
+			if (error) {
+				console.error("❌ Erro ao atualizar cliente:", error);
+				alert(`Erro ao atualizar cliente: ${error.message}`);
+				return;
+			}
+
+			console.log("✅ Cliente atualizado com sucesso");
+
+			// Atualizar a lista de clientes
+			if (profile) {
+				await loadClientes(profile.role, profile.id);
+			}
+
+			// Fechar modal e limpar estados
+			setModalEditarOpen(false);
+			setClienteEditando(null);
+			alert("Cliente atualizado com sucesso!");
+		} catch (err) {
+			console.error("💥 Erro inesperado ao atualizar cliente:", err);
+			alert("Erro inesperado ao atualizar cliente");
+		} finally {
+			setEditandoLoading(false);
+		}
 	};
 
 	const handleDeletar = async (clienteId: string, clienteNome: string) => {
@@ -344,29 +400,44 @@ export default function ClientesPage() {
 		}
 	};
 
-	// Função para fechar modal
-	const closeModal = () => {
-		setModalOpen(false);
+	// Funções para fechar modais
+	const closeModalDetalhes = () => {
+		setModalDetalhesOpen(false);
 		setSelectedCliente(null);
 	};
 
-	// Função para lidar com tecla Escape no modal
+	const closeModalEditar = () => {
+		setModalEditarOpen(false);
+		setClienteEditando(null);
+	};
+
+	// Função para lidar com tecla Escape nos modais
 	useEffect(() => {
 		const handleEscape = (e: KeyboardEvent) => {
-			if (e.key === "Escape" && modalOpen) {
-				closeModal();
+			if (e.key === "Escape") {
+				if (modalDetalhesOpen) {
+					closeModalDetalhes();
+				}
+				if (modalEditarOpen) {
+					closeModalEditar();
+				}
 			}
 		};
 
 		document.addEventListener("keydown", handleEscape);
 		return () => document.removeEventListener("keydown", handleEscape);
-	}, [modalOpen]);
+	}, [modalDetalhesOpen, modalEditarOpen]);
 
 	// Função para lidar com teclado no overlay
 	const handleOverlayKeyDownModal = (e: React.KeyboardEvent) => {
 		if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
 			e.preventDefault();
-			closeModal();
+			if (modalDetalhesOpen) {
+				closeModalDetalhes();
+			}
+			if (modalEditarOpen) {
+				closeModalEditar();
+			}
 		}
 	};
 
@@ -922,7 +993,7 @@ export default function ClientesPage() {
 															type="button"
 															onClick={() =>
 																handleEditar(
-																	cliente.id,
+																	cliente,
 																)
 															}
 															className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
@@ -1100,13 +1171,13 @@ export default function ClientesPage() {
 			</div>
 
 			{/* MODAL DE DETALHES DO CLIENTE */}
-			{modalOpen && selectedCliente && (
+			{modalDetalhesOpen && selectedCliente && (
 				<>
 					{/* Overlay escuro */}
 					<button
 						type="button"
 						className="fixed inset-0 bg-black/50 z-50 transition-opacity"
-						onClick={closeModal}
+						onClick={closeModalDetalhes}
 						onKeyDown={handleOverlayKeyDownModal}
 						tabIndex={0}
 						aria-label="Fechar modal"
@@ -1142,7 +1213,7 @@ export default function ClientesPage() {
 								</div>
 								<button
 									type="button"
-									onClick={closeModal}
+									onClick={closeModalDetalhes}
 									className="p-2 hover:bg-gray-100 rounded-full transition-colors"
 									aria-label="Fechar"
 								>
@@ -1411,10 +1482,8 @@ export default function ClientesPage() {
 										<button
 											type="button"
 											onClick={() => {
-												handleEditar(
-													selectedCliente.id,
-												);
-												closeModal();
+												handleEditar(selectedCliente);
+												closeModalDetalhes();
 											}}
 											className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
 										>
@@ -1433,13 +1502,441 @@ export default function ClientesPage() {
 														selectedCliente.id,
 														selectedCliente.name,
 													);
-													closeModal();
+													closeModalDetalhes();
 												}
 											}}
 											className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors flex items-center gap-2"
 										>
 											<Trash2 size={16} />
 											Excluir
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</>
+			)}
+
+			{/* MODAL DE EDITAR CLIENTE */}
+			{modalEditarOpen && clienteEditando && (
+				<>
+					{/* Overlay escuro */}
+					<button
+						type="button"
+						className="fixed inset-0 bg-black/50 z-50 transition-opacity"
+						onClick={closeModalEditar}
+						onKeyDown={handleOverlayKeyDownModal}
+						tabIndex={0}
+						aria-label="Fechar modal de edição"
+					/>
+
+					{/* Modal */}
+					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+						<div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+							{/* Header do Modal */}
+							<div className="flex items-center justify-between p-6 border-b border-gray-200 bg-linear-to-r from-blue-50 to-indigo-50">
+								<div className="flex items-center gap-4">
+									<div className="w-16 h-16 bg-linear-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+										<UserIcon className="w-8 h-8 text-white" />
+									</div>
+									<div>
+										<h2 className="text-2xl font-bold text-gray-900">
+											Editar Cliente
+										</h2>
+										<p className="text-gray-600 mt-1">
+											{clienteEditando.name}
+										</p>
+									</div>
+								</div>
+								<button
+									type="button"
+									onClick={closeModalEditar}
+									className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+									aria-label="Fechar"
+								>
+									<X className="w-6 h-6 text-gray-500" />
+								</button>
+							</div>
+
+							{/* Conteúdo do Modal */}
+							<div className="overflow-y-auto max-h-[calc(90vh-180px)]">
+								<div className="p-6">
+									{/* Formulário de Edição */}
+									<form
+										onSubmit={(e) => {
+											e.preventDefault();
+											handleSalvarEdicao();
+										}}
+										className="space-y-6"
+									>
+										{/* Informações Principais */}
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+											{/* Coluna 1 */}
+											<div className="space-y-6">
+												{/* Contato */}
+												<div className="bg-gray-50 p-4 rounded-xl">
+													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+														<Mail className="w-5 h-5 text-blue-600" />
+														Informações de Contato
+													</h3>
+													<div className="space-y-4">
+														<div>
+															<label
+																htmlFor="edit-name"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Nome Completo
+															</label>
+															<input
+																id="edit-name"
+																type="text"
+																value={
+																	clienteEditando.name
+																}
+																onChange={(e) =>
+																	setClienteEditando(
+																		{
+																			...clienteEditando,
+																			name: e
+																				.target
+																				.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																required
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="edit-email"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Email
+															</label>
+															<input
+																id="edit-email"
+																type="email"
+																value={
+																	clienteEditando.email
+																}
+																onChange={(e) =>
+																	setClienteEditando(
+																		{
+																			...clienteEditando,
+																			email: e
+																				.target
+																				.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																required
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="edit-telefone"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Telefone
+															</label>
+															<input
+																id="edit-telefone"
+																type="tel"
+																value={
+																	clienteEditando.telefone ||
+																	""
+																}
+																onChange={(e) =>
+																	setClienteEditando(
+																		{
+																			...clienteEditando,
+																			telefone:
+																				e
+																					.target
+																					.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																placeholder="(00) 00000-0000"
+															/>
+														</div>
+													</div>
+												</div>
+
+												{/* Documentos */}
+												<div className="bg-gray-50 p-4 rounded-xl">
+													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+														<FileText className="w-5 h-5 text-purple-600" />
+														Documentos
+													</h3>
+													<div className="space-y-4">
+														<div>
+															<label
+																htmlFor="edit-nif"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																NIF
+															</label>
+															<input
+																id="edit-nif"
+																type="text"
+																value={
+																	clienteEditando.nif ||
+																	""
+																}
+																onChange={(e) =>
+																	setClienteEditando(
+																		{
+																			...clienteEditando,
+																			nif: e
+																				.target
+																				.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																placeholder="000.000.000-00"
+															/>
+														</div>
+													</div>
+												</div>
+											</div>
+
+											{/* Coluna 2 */}
+											<div className="space-y-6">
+												{/* Endereço */}
+												<div className="bg-gray-50 p-4 rounded-xl">
+													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+														<MapPin className="w-5 h-5 text-red-600" />
+														Endereço
+													</h3>
+													<div className="space-y-4">
+														<div>
+															<label
+																htmlFor="edit-endereco"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Endereço
+															</label>
+															<input
+																id="edit-endereco"
+																type="text"
+																value={
+																	clienteEditando.endereco ||
+																	""
+																}
+																onChange={(e) =>
+																	setClienteEditando(
+																		{
+																			...clienteEditando,
+																			endereco:
+																				e
+																					.target
+																					.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																placeholder="Rua, número, complemento"
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="edit-codigo-postal"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Código Postal
+															</label>
+															<input
+																id="edit-codigo-postal"
+																type="text"
+																value={
+																	clienteEditando.codigoPostal ||
+																	""
+																}
+																onChange={(e) =>
+																	setClienteEditando(
+																		{
+																			...clienteEditando,
+																			codigoPostal:
+																				e
+																					.target
+																					.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																placeholder="00000-000"
+															/>
+														</div>
+													</div>
+												</div>
+
+												{/* Produto e Status */}
+												<div className="bg-gray-50 p-4 rounded-xl">
+													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+														<Globe className="w-5 h-5 text-green-600" />
+														Informações Comerciais
+													</h3>
+													<div className="space-y-4">
+														<div>
+															<label
+																htmlFor="edit-produto"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Produto
+															</label>
+															<input
+																id="edit-produto"
+																type="text"
+																value={
+																	clienteEditando.produto ||
+																	""
+																}
+																onChange={(e) =>
+																	setClienteEditando(
+																		{
+																			...clienteEditando,
+																			produto:
+																				e
+																					.target
+																					.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																placeholder="Ex: Internet, TV, Telefone"
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="edit-status"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Status
+															</label>
+															<select
+																id="edit-status"
+																value={
+																	clienteEditando.status
+																}
+																onChange={(e) =>
+																	setClienteEditando(
+																		{
+																			...clienteEditando,
+																			status: e
+																				.target
+																				.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+															>
+																{STATUS_OPTIONS.map(
+																	(
+																		status,
+																	) => (
+																		<option
+																			key={
+																				status
+																			}
+																			value={
+																				status
+																			}
+																		>
+																			{status
+																				.charAt(
+																					0,
+																				)
+																				.toUpperCase() +
+																				status.slice(
+																					1,
+																				)}
+																		</option>
+																	),
+																)}
+															</select>
+														</div>
+													</div>
+												</div>
+											</div>
+										</div>
+
+										{/* Informações do Sistema (somente leitura) */}
+										<div className="mt-8 bg-linear-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
+											<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+												<Calendar className="w-5 h-5 text-gray-600" />
+												Informações do Sistema
+											</h3>
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+												<div className="bg-white p-4 rounded-lg border">
+													<p className="text-sm text-gray-500">
+														Data de Criação
+													</p>
+													<p className="font-medium">
+														{new Date(
+															clienteEditando.createdAt,
+														).toLocaleDateString(
+															"pt-BR",
+														)}
+													</p>
+												</div>
+												<div className="bg-white p-4 rounded-lg border">
+													<p className="text-sm text-gray-500">
+														Última Atualização
+													</p>
+													<p className="font-medium">
+														{new Date(
+															clienteEditando.updatedAt,
+														).toLocaleDateString(
+															"pt-BR",
+														)}
+													</p>
+												</div>
+											</div>
+										</div>
+									</form>
+								</div>
+							</div>
+
+							{/* Footer do Modal */}
+							<div className="border-t border-gray-200 p-4 bg-gray-50">
+								<div className="flex items-center justify-between">
+									<div className="text-sm text-gray-500">
+										ID do Cliente:{" "}
+										{clienteEditando.id.substring(0, 8)}...
+									</div>
+									<div className="flex items-center gap-3">
+										<button
+											type="button"
+											onClick={closeModalEditar}
+											className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors flex items-center gap-2"
+											disabled={editandoLoading}
+										>
+											<X size={16} />
+											Cancelar
+										</button>
+										<button
+											type="button"
+											onClick={handleSalvarEdicao}
+											disabled={editandoLoading}
+											className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+										>
+											{editandoLoading ? (
+												<>
+													<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+													Salvando...
+												</>
+											) : (
+												<>
+													<Save size={16} />
+													Salvar Alterações
+												</>
+											)}
 										</button>
 									</div>
 								</div>
