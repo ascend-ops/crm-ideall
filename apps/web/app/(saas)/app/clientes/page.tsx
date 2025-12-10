@@ -40,6 +40,7 @@ interface Cliente {
 	updatedAt: string;
 	profileId: string;
 	tenantId: string;
+	dataFimContrato: string | null; // NOVO CAMPO
 }
 
 interface SupabaseUser {
@@ -101,10 +102,46 @@ export default function ClientesPage() {
 	);
 	const [editandoLoading, setEditandoLoading] = useState(false);
 
+	// Estado para armazenar o nome do gestor/parceiro responsável
+	const [responsavelNome, setResponsavelNome] = useState<string>("");
+
 	useEffect(() => {
 		console.log("🚀 ClientesPage montado - iniciando checkAuth");
 		checkAuth();
 	}, []);
+
+	// Função para buscar o nome do responsável pelo profileId
+	const buscarResponsavelNome = async (profileId: string) => {
+		if (!profileId) {
+			setResponsavelNome("Não vinculado");
+			return;
+		}
+
+		try {
+			const { data, error } = await supabase
+				.from("profiles")
+				.select("name")
+				.eq("id", profileId)
+				.single();
+
+			if (error) {
+				console.error("❌ Erro ao buscar responsável:", error);
+				setResponsavelNome("Não encontrado");
+			} else {
+				setResponsavelNome(data?.name || "Nome não disponível");
+			}
+		} catch (err) {
+			console.error("💥 Erro inesperado ao buscar responsável:", err);
+			setResponsavelNome("Erro ao buscar");
+		}
+	};
+
+	// Buscar nome do responsável quando um cliente for selecionado para detalhes
+	useEffect(() => {
+		if (selectedCliente) {
+			buscarResponsavelNome(selectedCliente.profileId);
+		}
+	}, [selectedCliente]);
 
 	const checkAuth = async () => {
 		console.group("🔐 CHECK AUTH - CLIENTES");
@@ -208,6 +245,7 @@ export default function ClientesPage() {
 	};
 
 	// 🔍 Filtros combinados
+	// 🔍 Filtros combinados
 	useEffect(() => {
 		let result = [...clientes];
 
@@ -232,16 +270,31 @@ export default function ClientesPage() {
 			);
 		}
 
-		// Ordenação
+		// Ordenação - CORRIGIDO
 		if (sortConfig) {
 			result.sort((a, b) => {
 				const aVal = a[sortConfig.key];
 				const bVal = b[sortConfig.key];
 
-				if (aVal < bVal) {
+				// Tratar valores null/undefined
+				if (aVal == null && bVal == null) {
+					return 0;
+				}
+				if (aVal == null) {
+					return sortConfig.direction === "asc" ? 1 : -1;
+				}
+				if (bVal == null) {
 					return sortConfig.direction === "asc" ? -1 : 1;
 				}
-				if (aVal > bVal) {
+
+				// Converter para string para comparação segura
+				const aStr = String(aVal).toLowerCase();
+				const bStr = String(bVal).toLowerCase();
+
+				if (aStr < bStr) {
+					return sortConfig.direction === "asc" ? -1 : 1;
+				}
+				if (aStr > bStr) {
 					return sortConfig.direction === "asc" ? 1 : -1;
 				}
 				return 0;
@@ -299,6 +352,14 @@ export default function ClientesPage() {
 				{status.charAt(0).toUpperCase() + status.slice(1)}
 			</span>
 		);
+	};
+
+	// Função para formatar a data de fim de contrato
+	const formatarDataFimContrato = (dataFimContrato: string | null) => {
+		if (!dataFimContrato) {
+			return "Não há";
+		}
+		return new Date(dataFimContrato).toLocaleDateString("pt-PT");
 	};
 
 	// FUNÇÕES PARA OS BOTÕES DE AÇÃO
@@ -404,6 +465,7 @@ export default function ClientesPage() {
 	const closeModalDetalhes = () => {
 		setModalDetalhesOpen(false);
 		setSelectedCliente(null);
+		setResponsavelNome("");
 	};
 
 	const closeModalEditar = () => {
@@ -452,6 +514,7 @@ export default function ClientesPage() {
 			"Código Postal",
 			"Endereço",
 			"Data Criação",
+			"Data Fim Contrato",
 		];
 		const csvData = filteredClientes.map((cliente) => [
 			cliente.name,
@@ -463,6 +526,9 @@ export default function ClientesPage() {
 			cliente.codigoPostal,
 			cliente.endereco,
 			new Date(cliente.createdAt).toLocaleDateString("pt-BR"),
+			cliente.dataFimContrato
+				? new Date(cliente.dataFimContrato).toLocaleDateString("pt-BR")
+				: "Não há",
 		]);
 
 		const csvContent = [
@@ -911,6 +977,9 @@ export default function ClientesPage() {
 											</div>
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+											Data Fim Contrato
+										</th>
+										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
 											Ações
 										</th>
 									</tr>
@@ -919,7 +988,7 @@ export default function ClientesPage() {
 									{paginatedClientes.length === 0 ? (
 										<tr>
 											<td
-												colSpan={7}
+												colSpan={8}
 												className="px-6 py-12 text-center text-gray-500"
 											>
 												<div className="flex flex-col items-center justify-center">
@@ -972,6 +1041,13 @@ export default function ClientesPage() {
 												<td className="px-6 py-4 whitespace-nowrap">
 													<div className="text-gray-600">
 														{cliente.produto || "-"}
+													</div>
+												</td>
+												<td className="px-6 py-4 whitespace-nowrap">
+													<div className="text-gray-600">
+														{formatarDataFimContrato(
+															cliente.dataFimContrato,
+														)}
 													</div>
 												</td>
 												<td className="px-6 py-4 whitespace-nowrap">
@@ -1187,9 +1263,9 @@ export default function ClientesPage() {
 					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 						<div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
 							{/* Header do Modal */}
-							<div className="flex items-center justify-between p-6 border-b border-gray-200 bg-linear-to-r from-blue-50 to-indigo-50">
+							<div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
 								<div className="flex items-center gap-4">
-									<div className="w-16 h-16 bg-linear-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+									<div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
 										<UserIcon className="w-8 h-8 text-white" />
 									</div>
 									<div>
@@ -1379,13 +1455,30 @@ export default function ClientesPage() {
 															</p>
 														</div>
 													</div>
+													{/* NOVO: Data Fim Contrato */}
+													<div className="flex items-center gap-3">
+														<div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+															<Calendar className="w-4 h-4 text-indigo-600" />
+														</div>
+														<div className="flex-1">
+															<p className="text-sm text-gray-500">
+																Data Fim
+																Contrato
+															</p>
+															<p className="font-medium">
+																{formatarDataFimContrato(
+																	selectedCliente.dataFimContrato,
+																)}
+															</p>
+														</div>
+													</div>
 												</div>
 											</div>
 										</div>
 									</div>
 
 									{/* Informações de Sistema */}
-									<div className="mt-8 bg-linear-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
+									<div className="mt-8 bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
 										<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 											<Calendar className="w-5 h-5 text-gray-600" />
 											Informações do Sistema
@@ -1431,36 +1524,15 @@ export default function ClientesPage() {
 											</div>
 											<div className="bg-white p-4 rounded-lg border">
 												<p className="text-sm text-gray-500">
-													ID do Perfil Vinculado
+													Responsável
 												</p>
-												<p className="font-mono text-sm font-medium truncate">
-													{selectedCliente.profileId ||
-														"Não vinculado"}
+												<p className="font-medium truncate">
+													{responsavelNome ||
+														"Carregando..."}
 												</p>
 											</div>
 										</div>
 									</div>
-
-									{/* Metadata do Tenant (se disponível) */}
-									{selectedCliente.tenantId && (
-										<div className="mt-6 p-4 bg-linear-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
-											<div className="flex items-center gap-3">
-												<div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-													<UserIcon className="w-5 h-5 text-white" />
-												</div>
-												<div>
-													<p className="text-sm text-gray-600">
-														Tenant ID
-													</p>
-													<p className="font-mono text-sm font-semibold">
-														{
-															selectedCliente.tenantId
-														}
-													</p>
-												</div>
-											</div>
-										</div>
-									)}
 								</div>
 							</div>
 
@@ -1535,9 +1607,9 @@ export default function ClientesPage() {
 					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 						<div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
 							{/* Header do Modal */}
-							<div className="flex items-center justify-between p-6 border-b border-gray-200 bg-linear-to-r from-blue-50 to-indigo-50">
+							<div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
 								<div className="flex items-center gap-4">
-									<div className="w-16 h-16 bg-linear-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+									<div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
 										<UserIcon className="w-8 h-8 text-white" />
 									</div>
 									<div>
@@ -1867,12 +1939,12 @@ export default function ClientesPage() {
 										</div>
 
 										{/* Informações do Sistema (somente leitura) */}
-										<div className="mt-8 bg-linear-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
+										<div className="mt-8 bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
 											<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 												<Calendar className="w-5 h-5 text-gray-600" />
 												Informações do Sistema
 											</h3>
-											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+											<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 												<div className="bg-white p-4 rounded-lg border">
 													<p className="text-sm text-gray-500">
 														Data de Criação
@@ -1894,6 +1966,16 @@ export default function ClientesPage() {
 															clienteEditando.updatedAt,
 														).toLocaleDateString(
 															"pt-BR",
+														)}
+													</p>
+												</div>
+												<div className="bg-white p-4 rounded-lg border">
+													<p className="text-sm text-gray-500">
+														Data Fim Contrato
+													</p>
+													<p className="font-medium">
+														{formatarDataFimContrato(
+															clienteEditando.dataFimContrato,
 														)}
 													</p>
 												</div>
