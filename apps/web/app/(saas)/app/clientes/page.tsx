@@ -15,6 +15,7 @@ import {
 	MapPin,
 	Menu,
 	Phone,
+	Plus,
 	Save,
 	Search,
 	Trash2,
@@ -39,8 +40,13 @@ interface Cliente {
 	createdAt: string;
 	updatedAt: string;
 	profileId: string;
+	responsavelId: string;
 	tenantId: string;
-	dataFimContrato: string | null; // NOVO CAMPO
+	dataFimContrato: string | null;
+	parceiroNome?: string;
+	parceiroRole?: string;
+	gestorNome?: string;
+	foiAtribuido?: boolean;
 }
 
 interface SupabaseUser {
@@ -54,6 +60,12 @@ interface Profile {
 	name: string;
 	email: string;
 	role: string;
+}
+
+interface Parceiro {
+	id: string;
+	name: string;
+	email: string;
 }
 
 const STATUS_OPTIONS = [
@@ -84,6 +96,8 @@ export default function ClientesPage() {
 	const [loading, setLoading] = useState(true);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [selectedStatus, setSelectedStatus] = useState<string>("all");
+	const [selectedGestor, setSelectedGestor] = useState<string>("all");
+	const [selectedParceiro, setSelectedParceiro] = useState<string>("all");
 	const [sortConfig, setSortConfig] = useState<{
 		key: keyof Cliente;
 		direction: "asc" | "desc";
@@ -91,52 +105,36 @@ export default function ClientesPage() {
 	const [page, setPage] = useState(1);
 	const itemsPerPage = 20;
 
-	// Estados para controlar os modais
 	const [modalDetalhesOpen, setModalDetalhesOpen] = useState(false);
 	const [modalEditarOpen, setModalEditarOpen] = useState(false);
+	const [modalAdicionarOpen, setModalAdicionarOpen] = useState(false);
 	const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(
 		null,
 	);
 	const [clienteEditando, setClienteEditando] = useState<Cliente | null>(
 		null,
 	);
+	const [novoCliente, setNovoCliente] = useState({
+		name: "",
+		email: "",
+		telefone: "",
+		nif: "",
+		codigoPostal: "",
+		endereco: "",
+		status: "em análise",
+		produto: "",
+	});
 	const [editandoLoading, setEditandoLoading] = useState(false);
+	const [adicionandoLoading, setAdicionandoLoading] = useState(false);
 
-	// Estado para armazenar o nome do gestor/parceiro responsável
+	const [parceirosDoGestor, setParceirosDoGestor] = useState<Parceiro[]>([]);
+	const [parceiroSelecionado, setParceiroSelecionado] = useState<string>("");
 	const [responsavelNome, setResponsavelNome] = useState<string>("");
 
 	useEffect(() => {
-		console.log("🚀 ClientesPage montado - iniciando checkAuth");
 		checkAuth();
 	}, []);
 
-	// Função para buscar o nome do responsável pelo profileId
-	const buscarResponsavelNome = async (profileId: string) => {
-		if (!profileId) {
-			setResponsavelNome("Não vinculado");
-			return;
-		}
-
-		try {
-			const { data, error } = await supabase
-				.from("profiles")
-				.select("name")
-				.eq("id", profileId)
-				.single();
-
-			if (error) {
-				console.error("❌ Erro ao buscar responsável:", error);
-				setResponsavelNome("Não encontrado");
-			} else {
-				setResponsavelNome(data?.name || "Nome não disponível");
-			}
-		} catch (err) {
-			console.error("💥 Erro inesperado ao buscar responsável:", err);
-			setResponsavelNome("Erro ao buscar");
-		}
-	};
-
-	// Buscar nome do responsável quando um cliente for selecionado para detalhes
 	useEffect(() => {
 		if (selectedCliente) {
 			buscarResponsavelNome(selectedCliente.profileId);
@@ -144,7 +142,6 @@ export default function ClientesPage() {
 	}, [selectedCliente]);
 
 	const checkAuth = async () => {
-		console.group("🔐 CHECK AUTH - CLIENTES");
 		try {
 			const {
 				data: { session },
@@ -157,7 +154,6 @@ export default function ClientesPage() {
 			}
 
 			setUser(session.user as SupabaseUser);
-			console.log("🔹 USER METADATA:", session.user.user_metadata);
 
 			let role = session.user.user_metadata?.role;
 			let profileData: Profile | null = null;
@@ -187,16 +183,45 @@ export default function ClientesPage() {
 			if (profileData) {
 				setProfile(profileData);
 				await loadClientes(profileData.role, profileData.id);
+				if (profileData.role === "gestor") {
+					await carregarParceirosDoGestor(profileData.id);
+				}
 			} else {
-				console.error("❌ Profile não encontrado");
 				router.push("/auth/login");
 			}
-		} catch (error) {
-			console.error("💥 Erro inesperado no checkAuth:", error);
+		} catch (_error) {
 			router.push("/auth/login");
 		} finally {
 			setLoading(false);
-			console.groupEnd();
+		}
+	};
+
+	const carregarParceirosDoGestor = async (gestorId: string) => {
+		try {
+			const { data, error } = await supabase
+				.from("gestor_parceiros")
+				.select(
+					`
+          parceiro_id,
+          profiles:parceiro_id(id, name, email)
+        `,
+				)
+				.eq("gestor_id", gestorId);
+
+			if (error) {
+				throw error;
+			}
+
+			if (data) {
+				const parceiros = data.map((p: any) => ({
+					id: p.profiles.id,
+					name: p.profiles.name,
+					email: p.profiles.email,
+				}));
+				setParceirosDoGestor(parceiros);
+			}
+		} catch (err) {
+			console.error("Erro ao carregar parceiros:", err);
 		}
 	};
 
@@ -208,18 +233,17 @@ export default function ClientesPage() {
 
 			let query = supabase.from("clientes").select("*");
 
-			// MESMA LÓGICA DA DASHBOARD
 			if (userRole === "tenant") {
-				// Tenant vê TODOS os clientes do seu tenant
+				// Tenant vê TODOS os clientes do SEU tenant
+				// Inclui: clientes sem profileId (seus) E clientes com profileId (dos gestores)
 				query = query.eq("tenantId", userId);
 			} else if (userRole === "gestor") {
-				// Gestor vê apenas clientes vinculados a ele
+				// Gestor vê APENAS clientes que ELE criou (profileId = seu ID)
 				query = query.eq("profileId", userId);
 			} else if (userRole === "parceiro") {
-				// Parceiro também vê apenas seus clientes
-				query = query.eq("profileId", userId);
+				// Parceiro vê APENAS clientes onde ele é o responsável
+				query = query.eq("responsavelId", userId);
 			}
-			// Outros roles ou sem role específica veem tudo?
 
 			const { data, error } = await query.order("createdAt", {
 				ascending: false,
@@ -235,8 +259,10 @@ export default function ClientesPage() {
 			console.log(
 				`✅ ${data?.length || 0} clientes carregados para ${userRole}`,
 			);
-			setClientes(data || []);
-			setFilteredClientes(data || []);
+
+			const clientesComInfo = await carregarInfosResponsaveis(data || []);
+			setClientes(clientesComInfo);
+			setFilteredClientes(clientesComInfo);
 		} catch (err) {
 			console.error("💥 Erro inesperado ao carregar clientes:", err);
 			setClientes([]);
@@ -244,12 +270,170 @@ export default function ClientesPage() {
 		}
 	};
 
-	// 🔍 Filtros combinados
-	// 🔍 Filtros combinados
+	const _getClienteIdsDoGestor = async (
+		gestorId: string,
+	): Promise<string[]> => {
+		if (!gestorId) {
+			console.error(
+				"❌ gestorId não fornecido para getClienteIdsDoGestor",
+			);
+			return [];
+		}
+
+		try {
+			const { data: parceiros, error } = await supabase
+				.from("gestor_parceiros")
+				.select("parceiro_id")
+				.eq("gestor_id", gestorId);
+
+			if (error) {
+				console.error("❌ Erro ao buscar parceiros do gestor:", error);
+				return [];
+			}
+
+			const parceiroIds = parceiros.map((p) => p.parceiro_id);
+
+			// Adicionar o próprio gestor na lista
+			const responsavelIds = [...parceiroIds, gestorId];
+
+			const { data: clientes, error: clientesError } = await supabase
+				.from("clientes")
+				.select("id")
+				.in("responsavelId", responsavelIds);
+
+			if (clientesError) {
+				console.error(
+					"❌ Erro ao buscar clientes do gestor:",
+					clientesError,
+				);
+				return [];
+			}
+
+			return clientes.map((c) => c.id);
+		} catch (err) {
+			console.error("💥 Erro inesperado em getClienteIdsDoGestor:", err);
+			return [];
+		}
+	};
+
+	const carregarInfosResponsaveis = async (clientes: Cliente[]) => {
+		try {
+			// 1. Coletar todos os IDs de profiles
+			const allProfileIds = new Set<string>();
+
+			clientes.forEach((cliente) => {
+				if (cliente.profileId) {
+					allProfileIds.add(cliente.profileId);
+				}
+				if (cliente.responsavelId) {
+					allProfileIds.add(cliente.responsavelId);
+				}
+			});
+
+			// 2. Buscar todos os profiles de uma vez
+			const { data: profiles, error } = await supabase
+				.from("profiles")
+				.select("id, name, role")
+				.in("id", Array.from(allProfileIds));
+
+			if (error) {
+				console.error("❌ Erro ao buscar profiles:", error);
+				return clientes.map((cliente) => ({
+					...cliente,
+					parceiroNome: "",
+					parceiroRole: "",
+					gestorNome: "",
+					foiAtribuido: false,
+				}));
+			}
+
+			// Criar mapa para acesso rápido
+			const profileMap = new Map();
+			profiles?.forEach((profile) => {
+				profileMap.set(profile.id, profile);
+			});
+
+			// 3. Processar cada cliente
+			return clientes.map((cliente) => {
+				// Quem CRIOU o cliente
+				const criadorProfile = profileMap.get(cliente.profileId);
+
+				// Quem é o RESPONSÁVEL atual
+				const responsavelIdAtual =
+					cliente.responsavelId || cliente.profileId;
+				const responsavelProfile = profileMap.get(responsavelIdAtual);
+
+				// Verificar se foi atribuído
+				const foiAtribuido = !!(
+					cliente.responsavelId &&
+					cliente.responsavelId !== cliente.profileId
+				);
+
+				// LÓGICA PARA COLUNA PARCEIRO:
+				let parceiroNome = "";
+				let parceiroRole = "";
+
+				// Só mostra parceiro se o responsável for um parceiro
+				if (responsavelProfile?.role === "parceiro") {
+					parceiroNome = responsavelProfile.name;
+					parceiroRole = responsavelProfile.role;
+				}
+
+				// LÓGICA PARA COLUNA GESTOR:
+				let gestorNome = "";
+				if (criadorProfile?.role === "gestor") {
+					gestorNome = criadorProfile.name;
+				}
+
+				return {
+					...cliente,
+					parceiroNome,
+					parceiroRole,
+					gestorNome,
+					foiAtribuido,
+				};
+			});
+		} catch (error) {
+			console.error(
+				"💥 Erro inesperado em carregarInfosResponsaveis:",
+				error,
+			);
+			return clientes.map((cliente) => ({
+				...cliente,
+				parceiroNome: "",
+				parceiroRole: "",
+				gestorNome: "",
+				foiAtribuido: false,
+			}));
+		}
+	};
+
+	const buscarResponsavelNome = async (profileId: string) => {
+		if (!profileId) {
+			setResponsavelNome("Não vinculado");
+			return;
+		}
+
+		try {
+			const { data, error } = await supabase
+				.from("profiles")
+				.select("name")
+				.eq("id", profileId)
+				.single();
+
+			if (error) {
+				setResponsavelNome("Não encontrado");
+			} else {
+				setResponsavelNome(data?.name || "Nome não disponível");
+			}
+		} catch (_err) {
+			setResponsavelNome("Erro ao buscar");
+		}
+	};
+
 	useEffect(() => {
 		let result = [...clientes];
 
-		// Filtro por busca
 		if (searchTerm) {
 			const term = searchTerm.toLowerCase();
 			result = result.filter(
@@ -263,20 +447,29 @@ export default function ClientesPage() {
 			);
 		}
 
-		// Filtro por status
 		if (selectedStatus !== "all") {
 			result = result.filter(
 				(cliente) => cliente.status === selectedStatus,
 			);
 		}
 
-		// Ordenação - CORRIGIDO
+		if (selectedGestor !== "all") {
+			result = result.filter(
+				(cliente) => cliente.gestorNome === selectedGestor,
+			);
+		}
+
+		if (selectedParceiro !== "all") {
+			result = result.filter(
+				(cliente) => cliente.parceiroNome === selectedParceiro,
+			);
+		}
+
 		if (sortConfig) {
 			result.sort((a, b) => {
 				const aVal = a[sortConfig.key];
 				const bVal = b[sortConfig.key];
 
-				// Tratar valores null/undefined
 				if (aVal == null && bVal == null) {
 					return 0;
 				}
@@ -287,7 +480,6 @@ export default function ClientesPage() {
 					return sortConfig.direction === "asc" ? -1 : 1;
 				}
 
-				// Converter para string para comparação segura
 				const aStr = String(aVal).toLowerCase();
 				const bStr = String(bVal).toLowerCase();
 
@@ -302,10 +494,17 @@ export default function ClientesPage() {
 		}
 
 		setFilteredClientes(result);
-		setPage(1); // Resetar para primeira página ao filtrar
-	}, [clientes, searchTerm, selectedStatus, sortConfig]);
+		setPage(1);
+	}, [
+		clientes,
+		searchTerm,
+		selectedStatus,
+		selectedGestor,
+		selectedParceiro,
+		sortConfig,
+	]);
 
-	const handleSort = (key: keyof Cliente) => {
+	const _handleSort = (key: keyof Cliente) => {
 		setSortConfig((current) => {
 			if (current?.key === key) {
 				return {
@@ -317,7 +516,6 @@ export default function ClientesPage() {
 		});
 	};
 
-	// Funções de navegação e acessibilidade
 	const handleNavigation = (path: string) => {
 		router.push(path);
 	};
@@ -329,7 +527,7 @@ export default function ClientesPage() {
 		}
 	};
 
-	const handleOverlayClick = (_e: React.MouseEvent) => {
+	const handleOverlayClick = () => {
 		setSidebarOpen(false);
 	};
 
@@ -340,7 +538,6 @@ export default function ClientesPage() {
 		}
 	};
 
-	// Corrigido: Função com tipo explícito
 	const getStatusBadge = (status: string) => {
 		const colorClass =
 			STATUS_COLORS[status as keyof typeof STATUS_COLORS] ||
@@ -354,33 +551,43 @@ export default function ClientesPage() {
 		);
 	};
 
-	// Função para formatar a data de fim de contrato
 	const formatarDataFimContrato = (dataFimContrato: string | null) => {
 		if (!dataFimContrato) {
-			return "Não há";
+			return "-";
 		}
 		return new Date(dataFimContrato).toLocaleDateString("pt-PT");
 	};
 
-	// FUNÇÕES PARA OS BOTÕES DE AÇÃO
 	const handleVerDetalhes = (cliente: Cliente) => {
-		console.log("🔍 Ver detalhes do cliente:", cliente);
 		setSelectedCliente(cliente);
 		setModalDetalhesOpen(true);
 	};
 
 	const handleEditar = (cliente: Cliente) => {
-		console.log("✏️ Abrir edição do cliente:", cliente);
 		setClienteEditando({ ...cliente });
 		setModalEditarOpen(true);
 	};
 
+	const handleAdicionarCliente = () => {
+		setNovoCliente({
+			name: "",
+			email: "",
+			telefone: "",
+			nif: "",
+			codigoPostal: "",
+			endereco: "",
+			status: "em análise",
+			produto: "",
+		});
+		setParceiroSelecionado("");
+		setModalAdicionarOpen(true);
+	};
+
 	const handleSalvarEdicao = async () => {
-		if (!clienteEditando) {
+		if (!clienteEditando || !profile) {
 			return;
 		}
 
-		console.log("💾 Salvando edição do cliente:", clienteEditando);
 		setEditandoLoading(true);
 
 		try {
@@ -400,33 +607,137 @@ export default function ClientesPage() {
 				.eq("id", clienteEditando.id);
 
 			if (error) {
-				console.error("❌ Erro ao atualizar cliente:", error);
-				alert(`Erro ao atualizar cliente: ${error.message}`);
-				return;
+				throw error;
 			}
 
-			console.log("✅ Cliente atualizado com sucesso");
-
-			// Atualizar a lista de clientes
-			if (profile) {
-				await loadClientes(profile.role, profile.id);
-			}
-
-			// Fechar modal e limpar estados
+			await loadClientes(profile.role, profile.id);
 			setModalEditarOpen(false);
 			setClienteEditando(null);
 			alert("Cliente atualizado com sucesso!");
-		} catch (err) {
-			console.error("💥 Erro inesperado ao atualizar cliente:", err);
-			alert("Erro inesperado ao atualizar cliente");
+		} catch (_err) {
+			alert("Erro ao atualizar cliente");
 		} finally {
 			setEditandoLoading(false);
 		}
 	};
 
-	const handleDeletar = async (clienteId: string, clienteNome: string) => {
-		console.log("🗑️ Deletar cliente:", clienteId);
+	const handleSalvarNovoCliente = async () => {
+		if (!profile) {
+			alert("Erro: Perfil não carregado");
+			return;
+		}
 
+		setAdicionandoLoading(true);
+
+		try {
+			// VALIDAÇÕES BASEADAS NA ROLE
+			if (profile.role === "parceiro") {
+				alert("Parceiros não podem criar clientes");
+				setAdicionandoLoading(false);
+				return;
+			}
+
+			// DADOS BASE PARA O CLIENTE
+			const dadosCliente: any = {
+				id: crypto.randomUUID(),
+				name: novoCliente.name,
+				email: novoCliente.email,
+				telefone: novoCliente.telefone || "",
+				nif: novoCliente.nif || "",
+				codigoPostal: novoCliente.codigoPostal || "",
+				endereco: novoCliente.endereco || "",
+				status: novoCliente.status,
+				produto: novoCliente.produto,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			// LÓGICA BASEADA NA ROLE DO USUÁRIO
+			if (profile.role === "tenant") {
+				// TENANT cria cliente para si mesmo (sem profileId)
+				dadosCliente.profileId = null;
+				dadosCliente.responsavelId = null;
+				dadosCliente.tenantId = profile.id; // Tenant é seu próprio tenant
+			} else if (profile.role === "gestor") {
+				// GESTOR sempre é o profileId
+				dadosCliente.profileId = profile.id;
+
+				// Pega tenantId do gestor
+				const { data: gestorProfile } = await supabase
+					.from("profiles")
+					.select("tenantId")
+					.eq("id", profile.id)
+					.single();
+
+				if (!gestorProfile?.tenantId) {
+					alert("Gestor sem tenant associado");
+					setAdicionandoLoading(false);
+					return;
+				}
+
+				dadosCliente.tenantId = gestorProfile.tenantId;
+
+				// Se selecionou um parceiro para atribuir
+				if (parceiroSelecionado) {
+					const parceiroValido = parceirosDoGestor.find(
+						(p) => p.id === parceiroSelecionado,
+					);
+
+					if (parceiroValido) {
+						dadosCliente.responsavelId = parceiroSelecionado;
+					} else {
+						alert("Este parceiro não está vinculado a você");
+						setAdicionandoLoading(false);
+						return;
+					}
+				} else {
+					// Gestor mantém a responsabilidade
+					dadosCliente.responsavelId = null;
+				}
+			}
+
+			// VALIDAÇÃO FINAL
+			if (!dadosCliente.tenantId) {
+				alert("Erro: Não foi possível determinar o tenant do cliente");
+				setAdicionandoLoading(false);
+				return;
+			}
+
+			// INSERE NO BANCO
+			const { error } = await supabase
+				.from("clientes")
+				.insert(dadosCliente)
+				.select()
+				.single();
+
+			if (error) {
+				throw error;
+			}
+
+			// RECARREGA E LIMPA
+			await loadClientes(profile.role, profile.id);
+			setModalAdicionarOpen(false);
+			setNovoCliente({
+				name: "",
+				email: "",
+				telefone: "",
+				nif: "",
+				codigoPostal: "",
+				endereco: "",
+				status: "em análise",
+				produto: "",
+			});
+			setParceiroSelecionado("");
+			alert("Cliente criado com sucesso!");
+		} catch (err: any) {
+			console.error("Erro ao criar cliente:", err);
+			alert(`Erro ao criar cliente: ${err.message || "Tente novamente"}`);
+		} finally {
+			setAdicionandoLoading(false);
+		}
+	};
+
+	const handleDeletar = async (clienteId: string, clienteNome: string) => {
 		if (
 			!confirm(
 				`Tem certeza que deseja deletar o cliente "${clienteNome}"? Esta ação não pode ser desfeita.`,
@@ -442,26 +753,19 @@ export default function ClientesPage() {
 				.eq("id", clienteId);
 
 			if (error) {
-				console.error("❌ Erro ao deletar cliente:", error);
-				alert(`Erro ao deletar cliente: ${error.message}`);
-				return;
+				throw error;
 			}
 
-			console.log("✅ Cliente deletado com sucesso");
-
-			// Atualizar a lista de clientes
 			if (profile) {
 				await loadClientes(profile.role, profile.id);
 			}
 
 			alert("Cliente deletado com sucesso!");
-		} catch (err) {
-			console.error("💥 Erro inesperado ao deletar cliente:", err);
-			alert("Erro inesperado ao deletar cliente");
+		} catch (_err) {
+			alert("Erro ao deletar cliente");
 		}
 	};
 
-	// Funções para fechar modais
 	const closeModalDetalhes = () => {
 		setModalDetalhesOpen(false);
 		setSelectedCliente(null);
@@ -473,7 +777,21 @@ export default function ClientesPage() {
 		setClienteEditando(null);
 	};
 
-	// Função para lidar com tecla Escape nos modais
+	const closeModalAdicionar = () => {
+		setModalAdicionarOpen(false);
+		setNovoCliente({
+			name: "",
+			email: "",
+			telefone: "",
+			nif: "",
+			codigoPostal: "",
+			endereco: "",
+			status: "em análise",
+			produto: "",
+		});
+		setParceiroSelecionado("");
+	};
+
 	useEffect(() => {
 		const handleEscape = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
@@ -483,14 +801,16 @@ export default function ClientesPage() {
 				if (modalEditarOpen) {
 					closeModalEditar();
 				}
+				if (modalAdicionarOpen) {
+					closeModalAdicionar();
+				}
 			}
 		};
 
 		document.addEventListener("keydown", handleEscape);
 		return () => document.removeEventListener("keydown", handleEscape);
-	}, [modalDetalhesOpen, modalEditarOpen]);
+	}, [modalDetalhesOpen, modalEditarOpen, modalAdicionarOpen]);
 
-	// Função para lidar com teclado no overlay
 	const handleOverlayKeyDownModal = (e: React.KeyboardEvent) => {
 		if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
 			e.preventDefault();
@@ -499,6 +819,9 @@ export default function ClientesPage() {
 			}
 			if (modalEditarOpen) {
 				closeModalEditar();
+			}
+			if (modalAdicionarOpen) {
+				closeModalAdicionar();
 			}
 		}
 	};
@@ -515,6 +838,8 @@ export default function ClientesPage() {
 			"Endereço",
 			"Data Criação",
 			"Data Fim Contrato",
+			"Parceiro",
+			"Gestor",
 		];
 		const csvData = filteredClientes.map((cliente) => [
 			cliente.name,
@@ -528,7 +853,9 @@ export default function ClientesPage() {
 			new Date(cliente.createdAt).toLocaleDateString("pt-BR"),
 			cliente.dataFimContrato
 				? new Date(cliente.dataFimContrato).toLocaleDateString("pt-BR")
-				: "Não há",
+				: "-",
+			cliente.parceiroNome || "",
+			cliente.gestorNome || "-",
 		]);
 
 		const csvContent = [
@@ -552,11 +879,20 @@ export default function ClientesPage() {
 		document.body.removeChild(link);
 	};
 
-	// Paginação
 	const totalPages = Math.ceil(filteredClientes.length / itemsPerPage);
 	const startIndex = (page - 1) * itemsPerPage;
 	const endIndex = startIndex + itemsPerPage;
 	const paginatedClientes = filteredClientes.slice(startIndex, endIndex);
+
+	// Obter lista única de gestores
+	const gestoresUnicos = Array.from(
+		new Set(clientes.map((c) => c.gestorNome).filter(Boolean)),
+	).sort();
+
+	// Obter lista única de parceiros
+	const parceirosUnicos = Array.from(
+		new Set(clientes.map((c) => c.parceiroNome).filter(Boolean)),
+	).sort();
 
 	if (loading) {
 		return (
@@ -572,9 +908,11 @@ export default function ClientesPage() {
 		return null;
 	}
 
+	const podeAdicionarCliente =
+		profile.role === "tenant" || profile.role === "gestor";
+
 	return (
 		<div className="flex min-h-screen bg-gray-50">
-			{/* Sidebar */}
 			<nav
 				className={`fixed top-0 left-0 h-screen bg-white border-r border-gray-200 transition-all duration-300 z-40 ${
 					expanded ? "w-64" : "w-16"
@@ -582,12 +920,14 @@ export default function ClientesPage() {
 				aria-label="Navegação principal"
 			>
 				<div className="flex flex-col h-full">
-					{/* BOTÃO DE EXPANDIR/RETRAIR (DESKTOP) */}
 					<div className="p-4 border-b border-gray-200 flex items-center">
 						<button
 							type="button"
 							onClick={() => setExpanded(!expanded)}
 							className="p-2 rounded-md hover:bg-gray-100"
+							aria-label={
+								expanded ? "Retrair menu" : "Expandir menu"
+							}
 						>
 							<Menu className="w-5 h-5" />
 						</button>
@@ -599,9 +939,7 @@ export default function ClientesPage() {
 						)}
 					</div>
 
-					{/* Menu items */}
 					<div className="flex-1 p-4 space-y-2">
-						{/* Dashboard */}
 						<button
 							type="button"
 							onClick={() => handleNavigation("/app/dashboard")}
@@ -624,7 +962,6 @@ export default function ClientesPage() {
 							)}
 						</button>
 
-						{/* Clientes */}
 						<button
 							type="button"
 							onClick={() => handleNavigation("/app/clientes")}
@@ -648,7 +985,6 @@ export default function ClientesPage() {
 						</button>
 					</div>
 
-					{/* User info */}
 					<div className="p-4 border-t border-gray-200">
 						<div className="flex items-center gap-3">
 							<div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
@@ -671,7 +1007,6 @@ export default function ClientesPage() {
 				</div>
 			</nav>
 
-			{/* Overlay para mobile */}
 			{sidebarOpen && (
 				<button
 					type="button"
@@ -682,13 +1017,11 @@ export default function ClientesPage() {
 				/>
 			)}
 
-			{/* Conteúdo principal */}
 			<div
 				className={`flex-1 transition-all duration-300 ${
 					expanded ? "md:ml-64" : "md:ml-16"
 				}`}
 			>
-				{/* Botão de menu para mobile */}
 				<div className="md:hidden p-4">
 					<button
 						type="button"
@@ -701,7 +1034,6 @@ export default function ClientesPage() {
 				</div>
 
 				<div className="p-6 space-y-6">
-					{/* Header */}
 					<div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
 						<div>
 							<h1 className="text-3xl font-bold text-gray-800">
@@ -719,6 +1051,16 @@ export default function ClientesPage() {
 						</div>
 
 						<div className="flex items-center gap-3">
+							{podeAdicionarCliente && (
+								<button
+									type="button"
+									onClick={handleAdicionarCliente}
+									className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+								>
+									<Plus size={18} />
+									Adicionar Cliente
+								</button>
+							)}
 							<button
 								type="button"
 								onClick={exportToCSV}
@@ -730,10 +1072,8 @@ export default function ClientesPage() {
 						</div>
 					</div>
 
-					{/* Filtros */}
 					<div className="bg-white p-4 rounded-lg shadow border">
-						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-							{/* Busca */}
+						<div className="grid grid-cols-1 md:grid-cols-5 gap-4">
 							<div>
 								<label
 									htmlFor="search-input"
@@ -746,6 +1086,7 @@ export default function ClientesPage() {
 									<Search
 										className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
 										size={20}
+										aria-hidden="true"
 									/>
 									<input
 										id="search-input"
@@ -760,7 +1101,6 @@ export default function ClientesPage() {
 								</div>
 							</div>
 
-							{/* Filtro por Status */}
 							<div>
 								<label
 									htmlFor="status-filter"
@@ -787,7 +1127,6 @@ export default function ClientesPage() {
 								</select>
 							</div>
 
-							{/* Filtro por Produto */}
 							<div>
 								<label
 									htmlFor="product-filter"
@@ -818,14 +1157,69 @@ export default function ClientesPage() {
 									))}
 								</select>
 							</div>
+
+							<div>
+								<label
+									htmlFor="gestor-filter"
+									className="block text-sm font-medium text-gray-700 mb-1"
+								>
+									Gestor
+								</label>
+								<select
+									id="gestor-filter"
+									value={selectedGestor}
+									onChange={(e) =>
+										setSelectedGestor(e.target.value)
+									}
+									className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+								>
+									<option value="all">
+										Todos os gestores
+									</option>
+									{gestoresUnicos.map((gestor) => (
+										<option key={gestor} value={gestor}>
+											{gestor}
+										</option>
+									))}
+								</select>
+							</div>
+
+							<div>
+								<label
+									htmlFor="parceiro-filter"
+									className="block text-sm font-medium text-gray-700 mb-1"
+								>
+									Parceiro
+								</label>
+								<select
+									id="parceiro-filter"
+									value={selectedParceiro}
+									onChange={(e) =>
+										setSelectedParceiro(e.target.value)
+									}
+									className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+								>
+									<option value="all">
+										Todos os parceiros
+									</option>
+									{parceirosUnicos.map((parceiro) => (
+										<option key={parceiro} value={parceiro}>
+											{parceiro}
+										</option>
+									))}
+								</select>
+							</div>
 						</div>
 
-						{/* Quick Status Filters */}
 						<div className="flex flex-wrap gap-2 mt-4">
 							<button
 								type="button"
 								onClick={() => setSelectedStatus("all")}
-								className={`px-3 py-1 text-sm rounded-full ${selectedStatus === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+								className={`px-3 py-1 text-sm rounded-full ${
+									selectedStatus === "all"
+										? "bg-blue-600 text-white"
+										: "bg-gray-100 text-gray-700 hover:bg-gray-200"
+								}`}
 							>
 								Todos ({clientes.length})
 							</button>
@@ -840,7 +1234,11 @@ export default function ClientesPage() {
 										onClick={() =>
 											setSelectedStatus(status)
 										}
-										className={`px-3 py-1 text-sm rounded-full ${selectedStatus === status ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+										className={`px-3 py-1 text-sm rounded-full ${
+											selectedStatus === status
+												? "bg-blue-600 text-white"
+												: "bg-gray-100 text-gray-700 hover:bg-gray-200"
+										}`}
 									>
 										{status.charAt(0).toUpperCase() +
 											status.slice(1)}{" "}
@@ -851,66 +1249,16 @@ export default function ClientesPage() {
 						</div>
 					</div>
 
-					{/* Tabela */}
 					<div className="bg-white rounded-lg shadow border overflow-hidden">
 						<div className="overflow-x-auto">
 							<table className="min-w-full divide-y divide-gray-200">
 								<thead className="bg-gray-50">
 									<tr>
-										<th
-											className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-											onClick={() => handleSort("name")}
-											onKeyDown={(e) => {
-												if (
-													e.key === "Enter" ||
-													e.key === " "
-												) {
-													e.preventDefault();
-													handleSort("name");
-												}
-											}}
-											tabIndex={0}
-											aria-label="Ordenar por nome"
-										>
-											<div className="flex items-center gap-1">
-												Nome
-												{sortConfig?.key === "name" && (
-													<span>
-														{sortConfig.direction ===
-														"asc"
-															? "↑"
-															: "↓"}
-													</span>
-												)}
-											</div>
+										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+											Nome
 										</th>
-										<th
-											className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-											onClick={() => handleSort("email")}
-											onKeyDown={(e) => {
-												if (
-													e.key === "Enter" ||
-													e.key === " "
-												) {
-													e.preventDefault();
-													handleSort("email");
-												}
-											}}
-											tabIndex={0}
-											aria-label="Ordenar por email"
-										>
-											<div className="flex items-center gap-1">
-												Email
-												{sortConfig?.key ===
-													"email" && (
-													<span>
-														{sortConfig.direction ===
-														"asc"
-															? "↑"
-															: "↓"}
-													</span>
-												)}
-											</div>
+										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+											Email
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
 											Telefone
@@ -918,66 +1266,20 @@ export default function ClientesPage() {
 										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
 											NIF
 										</th>
-										<th
-											className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-											onClick={() => handleSort("status")}
-											onKeyDown={(e) => {
-												if (
-													e.key === "Enter" ||
-													e.key === " "
-												) {
-													e.preventDefault();
-													handleSort("status");
-												}
-											}}
-											tabIndex={0}
-											aria-label="Ordenar por status"
-										>
-											<div className="flex items-center gap-1">
-												Status
-												{sortConfig?.key ===
-													"status" && (
-													<span>
-														{sortConfig.direction ===
-														"asc"
-															? "↑"
-															: "↓"}
-													</span>
-												)}
-											</div>
+										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+											Status
 										</th>
-										<th
-											className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-											onClick={() =>
-												handleSort("produto")
-											}
-											onKeyDown={(e) => {
-												if (
-													e.key === "Enter" ||
-													e.key === " "
-												) {
-													e.preventDefault();
-													handleSort("produto");
-												}
-											}}
-											tabIndex={0}
-											aria-label="Ordenar por produto"
-										>
-											<div className="flex items-center gap-1">
-												Produto
-												{sortConfig?.key ===
-													"produto" && (
-													<span>
-														{sortConfig.direction ===
-														"asc"
-															? "↑"
-															: "↓"}
-													</span>
-												)}
-											</div>
+										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+											Produto
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
 											Data Fim Contrato
+										</th>
+										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+											Parceiro
+										</th>
+										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+											Gestor
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
 											Ações
@@ -988,7 +1290,7 @@ export default function ClientesPage() {
 									{paginatedClientes.length === 0 ? (
 										<tr>
 											<td
-												colSpan={8}
+												colSpan={10}
 												className="px-6 py-12 text-center text-gray-500"
 											>
 												<div className="flex flex-col items-center justify-center">
@@ -1052,6 +1354,43 @@ export default function ClientesPage() {
 												</td>
 												<td className="px-6 py-4 whitespace-nowrap">
 													<div className="flex items-center gap-2">
+														<div>
+															<div className="font-medium">
+																{cliente.parceiroNome ||
+																	"-"}
+															</div>
+															{cliente.parceiroRole && (
+																<div className="flex items-center gap-1 mt-1">
+																	<span
+																		className={`text-xs px-1.5 py-0.5 rounded capitalize ${
+																			cliente.parceiroRole ===
+																			"parceiro"
+																				? "bg-green-100 text-green-800"
+																				: "bg-gray-100 text-gray-800"
+																		}`}
+																	>
+																		{
+																			cliente.parceiroRole
+																		}
+																	</span>
+																	{cliente.foiAtribuido && (
+																		<span className="text-xs bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">
+																			atribuído
+																		</span>
+																	)}
+																</div>
+															)}
+														</div>
+													</div>
+												</td>
+												<td className="px-6 py-4 whitespace-nowrap">
+													<div className="text-gray-700 font-medium">
+														{cliente.gestorNome ||
+															"-"}
+													</div>
+												</td>
+												<td className="px-6 py-4 whitespace-nowrap">
+													<div className="flex items-center gap-2">
 														<button
 															type="button"
 															onClick={() =>
@@ -1101,7 +1440,6 @@ export default function ClientesPage() {
 							</table>
 						</div>
 
-						{/* Paginação */}
 						{totalPages > 1 && (
 							<div className="px-6 py-4 border-t border-gray-200">
 								<div className="flex items-center justify-between">
@@ -1132,7 +1470,11 @@ export default function ClientesPage() {
 												)
 											}
 											disabled={page === 1}
-											className={`px-3 py-1 rounded border ${page === 1 ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+											className={`px-3 py-1 rounded border ${
+												page === 1
+													? "bg-gray-100 text-gray-400 cursor-not-allowed"
+													: "bg-white text-gray-700 hover:bg-gray-50"
+											}`}
 											aria-label="Página anterior"
 										>
 											Anterior
@@ -1167,7 +1509,11 @@ export default function ClientesPage() {
 															onClick={() =>
 																setPage(pageNum)
 															}
-															className={`w-8 h-8 rounded ${page === pageNum ? "bg-blue-600 text-white" : "bg-white text-gray-700 hover:bg-gray-100 border"}`}
+															className={`w-8 h-8 rounded ${
+																page === pageNum
+																	? "bg-blue-600 text-white"
+																	: "bg-white text-gray-700 hover:bg-gray-100 border"
+															}`}
 															aria-label={`Ir para página ${pageNum}`}
 															aria-current={
 																page === pageNum
@@ -1194,7 +1540,11 @@ export default function ClientesPage() {
 												)
 											}
 											disabled={page === totalPages}
-											className={`px-3 py-1 rounded border ${page === totalPages ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+											className={`px-3 py-1 rounded border ${
+												page === totalPages
+													? "bg-gray-100 text-gray-400 cursor-not-allowed"
+													: "bg-white text-gray-700 hover:bg-gray-50"
+											}`}
 											aria-label="Próxima página"
 										>
 											Próxima
@@ -1205,7 +1555,6 @@ export default function ClientesPage() {
 						)}
 					</div>
 
-					{/* Estatísticas rápidas */}
 					<div className="grid grid-cols-2 md:grid-cols-5 gap-4">
 						{STATUS_OPTIONS.map((status) => {
 							const count = clientes.filter(
@@ -1232,7 +1581,11 @@ export default function ClientesPage() {
 											</p>
 										</div>
 										<div
-											className={`w-12 h-12 rounded-full flex items-center justify-center ${STATUS_COLORS[status as keyof typeof STATUS_COLORS].split(" ")[0]}`}
+											className={`w-12 h-12 rounded-full flex items-center justify-center ${
+												STATUS_COLORS[
+													status as keyof typeof STATUS_COLORS
+												].split(" ")[0]
+											}`}
 										>
 											<span className="text-lg font-bold">
 												{percentage}%
@@ -1246,10 +1599,528 @@ export default function ClientesPage() {
 				</div>
 			</div>
 
-			{/* MODAL DE DETALHES DO CLIENTE */}
+			{modalAdicionarOpen && (
+				<>
+					<button
+						type="button"
+						className="fixed inset-0 bg-black/50 z-50 transition-opacity"
+						onClick={closeModalAdicionar}
+						onKeyDown={handleOverlayKeyDownModal}
+						tabIndex={0}
+						aria-label="Fechar modal"
+					/>
+
+					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+						<div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+							<div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+								<div className="flex items-center gap-4">
+									<div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+										<UserIcon className="w-8 h-8 text-white" />
+									</div>
+									<div>
+										<h2 className="text-2xl font-bold text-gray-900">
+											Adicionar Novo Cliente
+										</h2>
+										<p className="text-gray-600 mt-1">
+											Preencha os dados do novo cliente
+										</p>
+									</div>
+								</div>
+								<button
+									type="button"
+									onClick={closeModalAdicionar}
+									className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+									aria-label="Fechar"
+								>
+									<X className="w-6 h-6 text-gray-500" />
+								</button>
+							</div>
+
+							<div className="overflow-y-auto max-h-[calc(90vh-180px)]">
+								<div className="p-6">
+									<form
+										onSubmit={(e) => {
+											e.preventDefault();
+											handleSalvarNovoCliente();
+										}}
+										className="space-y-6"
+									>
+										{profile?.role === "gestor" &&
+											parceirosDoGestor.length > 0 && (
+												<div className="space-y-4">
+													<div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+														<h4 className="font-medium text-blue-800 flex items-center gap-2">
+															<Users size={16} />
+															Atribuição de
+															Responsável
+															(Opcional)
+														</h4>
+														<p className="text-sm text-blue-600 mt-1">
+															Você pode atribuir
+															este cliente a um
+															parceiro ou manter a
+															responsabilidade
+														</p>
+
+														<div className="mt-3 space-y-2">
+															<label className="flex items-center gap-2 p-2 border rounded-lg hover:bg-blue-50 cursor-pointer">
+																<input
+																	type="radio"
+																	name="responsavel"
+																	value=""
+																	checked={
+																		parceiroSelecionado ===
+																		""
+																	}
+																	onChange={(
+																		e,
+																	) =>
+																		setParceiroSelecionado(
+																			e
+																				.target
+																				.value,
+																		)
+																	}
+																	className="text-blue-600"
+																/>
+																<div>
+																	<div className="font-medium">
+																		Eu mesmo
+																		(Gestor)
+																	</div>
+																	<div className="text-xs text-gray-500">
+																		Você
+																		será o
+																		responsável
+																		por este
+																		cliente
+																	</div>
+																</div>
+															</label>
+
+															{parceirosDoGestor.map(
+																(parceiro) => (
+																	<label
+																		key={
+																			parceiro.id
+																		}
+																		className="flex items-center gap-2 p-2 border rounded-lg hover:bg-blue-50 cursor-pointer"
+																	>
+																		<input
+																			type="radio"
+																			name="responsavel"
+																			value={
+																				parceiro.id
+																			}
+																			checked={
+																				parceiroSelecionado ===
+																				parceiro.id
+																			}
+																			onChange={(
+																				e,
+																			) =>
+																				setParceiroSelecionado(
+																					e
+																						.target
+																						.value,
+																				)
+																			}
+																			className="text-blue-600"
+																		/>
+																		<div>
+																			<div className="font-medium">
+																				{
+																					parceiro.name
+																				}
+																			</div>
+																			<div className="text-xs text-gray-500">
+																				Parceiro
+																				•{" "}
+																				{
+																					parceiro.email
+																				}
+																			</div>
+																		</div>
+																	</label>
+																),
+															)}
+														</div>
+													</div>
+												</div>
+											)}
+
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+											<div className="space-y-6">
+												<div className="bg-gray-50 p-4 rounded-xl">
+													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+														<Mail className="w-5 h-5 text-blue-600" />
+														Informações de Contato
+													</h3>
+													<div className="space-y-4">
+														<div>
+															<label
+																htmlFor="novo-nome"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Nome Completo *
+															</label>
+															<input
+																id="novo-nome"
+																type="text"
+																value={
+																	novoCliente.name
+																}
+																onChange={(e) =>
+																	setNovoCliente(
+																		{
+																			...novoCliente,
+																			name: e
+																				.target
+																				.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																required
+																placeholder="João Silva"
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="novo-email"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Email *
+															</label>
+															<input
+																id="novo-email"
+																type="email"
+																value={
+																	novoCliente.email
+																}
+																onChange={(e) =>
+																	setNovoCliente(
+																		{
+																			...novoCliente,
+																			email: e
+																				.target
+																				.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																required
+																placeholder="joao.silva@exemplo.com"
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="novo-telefone"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Telefone
+															</label>
+															<input
+																id="novo-telefone"
+																type="tel"
+																value={
+																	novoCliente.telefone
+																}
+																onChange={(e) =>
+																	setNovoCliente(
+																		{
+																			...novoCliente,
+																			telefone:
+																				e
+																					.target
+																					.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																placeholder="(00) 00000-0000"
+															/>
+														</div>
+													</div>
+												</div>
+
+												<div className="bg-gray-50 p-4 rounded-xl">
+													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+														<FileText className="w-5 h-5 text-purple-600" />
+														Documentos
+													</h3>
+													<div className="space-y-4">
+														<div>
+															<label
+																htmlFor="novo-nif"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																NIF
+															</label>
+															<input
+																id="novo-nif"
+																type="text"
+																value={
+																	novoCliente.nif
+																}
+																onChange={(e) =>
+																	setNovoCliente(
+																		{
+																			...novoCliente,
+																			nif: e
+																				.target
+																				.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																placeholder="000.000.000-00"
+															/>
+														</div>
+													</div>
+												</div>
+											</div>
+
+											<div className="space-y-6">
+												<div className="bg-gray-50 p-4 rounded-xl">
+													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+														<MapPin className="w-5 h-5 text-red-600" />
+														Endereço
+													</h3>
+													<div className="space-y-4">
+														<div>
+															<label
+																htmlFor="novo-endereco"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Endereço
+															</label>
+															<input
+																id="novo-endereco"
+																type="text"
+																value={
+																	novoCliente.endereco
+																}
+																onChange={(e) =>
+																	setNovoCliente(
+																		{
+																			...novoCliente,
+																			endereco:
+																				e
+																					.target
+																					.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																placeholder="Rua, número, complemento"
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="novo-codigo-postal"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Código Postal
+															</label>
+															<input
+																id="novo-codigo-postal"
+																type="text"
+																value={
+																	novoCliente.codigoPostal
+																}
+																onChange={(e) =>
+																	setNovoCliente(
+																		{
+																			...novoCliente,
+																			codigoPostal:
+																				e
+																					.target
+																					.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																placeholder="00000-000"
+															/>
+														</div>
+													</div>
+												</div>
+
+												<div className="bg-gray-50 p-4 rounded-xl">
+													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+														<Globe className="w-5 h-5 text-green-600" />
+														Informações Comerciais
+													</h3>
+													<div className="space-y-4">
+														<div>
+															<label
+																htmlFor="novo-produto"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Produto *
+															</label>
+															<input
+																id="novo-produto"
+																type="text"
+																value={
+																	novoCliente.produto
+																}
+																onChange={(e) =>
+																	setNovoCliente(
+																		{
+																			...novoCliente,
+																			produto:
+																				e
+																					.target
+																					.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																required
+																placeholder="Ex: Internet, TV, Energia"
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor="novo-status"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Status *
+															</label>
+															<select
+																id="novo-status"
+																value={
+																	novoCliente.status
+																}
+																onChange={(e) =>
+																	setNovoCliente(
+																		{
+																			...novoCliente,
+																			status: e
+																				.target
+																				.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+																required
+															>
+																{STATUS_OPTIONS.map(
+																	(
+																		status,
+																	) => (
+																		<option
+																			key={
+																				status
+																			}
+																			value={
+																				status
+																			}
+																		>
+																			{status
+																				.charAt(
+																					0,
+																				)
+																				.toUpperCase() +
+																				status.slice(
+																					1,
+																				)}
+																		</option>
+																	),
+																)}
+															</select>
+														</div>
+													</div>
+												</div>
+											</div>
+										</div>
+
+										<div className="mt-8 bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
+											<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+												<Calendar className="w-5 h-5 text-gray-600" />
+												Informações do Sistema
+											</h3>
+											<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+												<div className="bg-white p-4 rounded-lg border">
+													<p className="text-sm text-gray-500">
+														Responsável
+													</p>
+													<p className="font-medium">
+														{profile?.name ||
+															"Carregando..."}
+													</p>
+												</div>
+												<div className="bg-white p-4 rounded-lg border">
+													<p className="text-sm text-gray-500">
+														Tipo de Usuário
+													</p>
+													<p className="font-medium capitalize">
+														{profile?.role ||
+															"Carregando..."}
+													</p>
+												</div>
+												<div className="bg-white p-4 rounded-lg border">
+													<p className="text-sm text-gray-500">
+														Data de Criação
+													</p>
+													<p className="font-medium">
+														{new Date().toLocaleDateString(
+															"pt-BR",
+														)}
+													</p>
+												</div>
+											</div>
+										</div>
+									</form>
+								</div>
+							</div>
+
+							<div className="border-t border-gray-200 p-4 bg-gray-50">
+								<div className="flex items-center justify-between">
+									<div className="text-sm text-gray-500">
+										Os campos marcados com * são
+										obrigatórios
+									</div>
+									<div className="flex items-center gap-3">
+										<button
+											type="button"
+											onClick={closeModalAdicionar}
+											className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors flex items-center gap-2"
+											disabled={adicionandoLoading}
+										>
+											<X size={16} />
+											Cancelar
+										</button>
+										<button
+											type="button"
+											onClick={handleSalvarNovoCliente}
+											disabled={adicionandoLoading}
+											className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+										>
+											{adicionandoLoading ? (
+												<>
+													<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+													Criando...
+												</>
+											) : (
+												<>
+													<Plus size={16} />
+													Criar Cliente
+												</>
+											)}
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</>
+			)}
+
 			{modalDetalhesOpen && selectedCliente && (
 				<>
-					{/* Overlay escuro */}
 					<button
 						type="button"
 						className="fixed inset-0 bg-black/50 z-50 transition-opacity"
@@ -1259,10 +2130,8 @@ export default function ClientesPage() {
 						aria-label="Fechar modal"
 					/>
 
-					{/* Modal */}
 					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 						<div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-							{/* Header do Modal */}
 							<div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
 								<div className="flex items-center gap-4">
 									<div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
@@ -1297,14 +2166,10 @@ export default function ClientesPage() {
 								</button>
 							</div>
 
-							{/* Conteúdo do Modal */}
 							<div className="overflow-y-auto max-h-[calc(90vh-180px)]">
 								<div className="p-6">
-									{/* Informações Principais */}
 									<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-										{/* Coluna 1 */}
 										<div className="space-y-6">
-											{/* Contato */}
 											<div className="bg-gray-50 p-4 rounded-xl">
 												<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 													<Mail className="w-5 h-5 text-blue-600" />
@@ -1343,7 +2208,6 @@ export default function ClientesPage() {
 												</div>
 											</div>
 
-											{/* Documentos */}
 											<div className="bg-gray-50 p-4 rounded-xl">
 												<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 													<FileText className="w-5 h-5 text-purple-600" />
@@ -1368,9 +2232,7 @@ export default function ClientesPage() {
 											</div>
 										</div>
 
-										{/* Coluna 2 */}
 										<div className="space-y-6">
-											{/* Endereço */}
 											<div className="bg-gray-50 p-4 rounded-xl">
 												<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 													<MapPin className="w-5 h-5 text-red-600" />
@@ -1408,7 +2270,6 @@ export default function ClientesPage() {
 												</div>
 											</div>
 
-											{/* Produto e Status */}
 											<div className="bg-gray-50 p-4 rounded-xl">
 												<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 													<Globe className="w-5 h-5 text-green-600" />
@@ -1455,7 +2316,6 @@ export default function ClientesPage() {
 															</p>
 														</div>
 													</div>
-													{/* NOVO: Data Fim Contrato */}
 													<div className="flex items-center gap-3">
 														<div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
 															<Calendar className="w-4 h-4 text-indigo-600" />
@@ -1477,7 +2337,6 @@ export default function ClientesPage() {
 										</div>
 									</div>
 
-									{/* Informações de Sistema */}
 									<div className="mt-8 bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
 										<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 											<Calendar className="w-5 h-5 text-gray-600" />
@@ -1536,7 +2395,6 @@ export default function ClientesPage() {
 								</div>
 							</div>
 
-							{/* Footer do Modal */}
 							<div className="border-t border-gray-200 p-4 bg-gray-50">
 								<div className="flex items-center justify-between">
 									<div className="text-sm text-gray-500">
@@ -1590,10 +2448,8 @@ export default function ClientesPage() {
 				</>
 			)}
 
-			{/* MODAL DE EDITAR CLIENTE */}
 			{modalEditarOpen && clienteEditando && (
 				<>
-					{/* Overlay escuro */}
 					<button
 						type="button"
 						className="fixed inset-0 bg-black/50 z-50 transition-opacity"
@@ -1603,10 +2459,8 @@ export default function ClientesPage() {
 						aria-label="Fechar modal de edição"
 					/>
 
-					{/* Modal */}
 					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 						<div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-							{/* Header do Modal */}
 							<div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
 								<div className="flex items-center gap-4">
 									<div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
@@ -1631,10 +2485,8 @@ export default function ClientesPage() {
 								</button>
 							</div>
 
-							{/* Conteúdo do Modal */}
 							<div className="overflow-y-auto max-h-[calc(90vh-180px)]">
 								<div className="p-6">
-									{/* Formulário de Edição */}
 									<form
 										onSubmit={(e) => {
 											e.preventDefault();
@@ -1642,11 +2494,8 @@ export default function ClientesPage() {
 										}}
 										className="space-y-6"
 									>
-										{/* Informações Principais */}
 										<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-											{/* Coluna 1 */}
 											<div className="space-y-6">
-												{/* Contato */}
 												<div className="bg-gray-50 p-4 rounded-xl">
 													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 														<Mail className="w-5 h-5 text-blue-600" />
@@ -1739,7 +2588,6 @@ export default function ClientesPage() {
 													</div>
 												</div>
 
-												{/* Documentos */}
 												<div className="bg-gray-50 p-4 rounded-xl">
 													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 														<FileText className="w-5 h-5 text-purple-600" />
@@ -1778,9 +2626,7 @@ export default function ClientesPage() {
 												</div>
 											</div>
 
-											{/* Coluna 2 */}
 											<div className="space-y-6">
-												{/* Endereço */}
 												<div className="bg-gray-50 p-4 rounded-xl">
 													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 														<MapPin className="w-5 h-5 text-red-600" />
@@ -1848,7 +2694,6 @@ export default function ClientesPage() {
 													</div>
 												</div>
 
-												{/* Produto e Status */}
 												<div className="bg-gray-50 p-4 rounded-xl">
 													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 														<Globe className="w-5 h-5 text-green-600" />
@@ -1938,7 +2783,6 @@ export default function ClientesPage() {
 											</div>
 										</div>
 
-										{/* Informações do Sistema (somente leitura) */}
 										<div className="mt-8 bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
 											<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 												<Calendar className="w-5 h-5 text-gray-600" />
@@ -1985,7 +2829,6 @@ export default function ClientesPage() {
 								</div>
 							</div>
 
-							{/* Footer do Modal */}
 							<div className="border-t border-gray-200 p-4 bg-gray-50">
 								<div className="flex items-center justify-between">
 									<div className="text-sm text-gray-500">
