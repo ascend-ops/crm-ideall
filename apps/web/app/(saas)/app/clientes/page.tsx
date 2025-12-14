@@ -129,6 +129,8 @@ export default function ClientesPage() {
 
 	const [parceirosDoGestor, setParceirosDoGestor] = useState<Parceiro[]>([]);
 	const [parceiroSelecionado, setParceiroSelecionado] = useState<string>("");
+	const [parceiroSelecionadoEdicao, setParceiroSelecionadoEdicao] =
+		useState<string>("");
 	const [responsavelNome, setResponsavelNome] = useState<string>("");
 
 	useEffect(() => {
@@ -140,6 +142,81 @@ export default function ClientesPage() {
 			buscarResponsavelNome(selectedCliente.profileId);
 		}
 	}, [selectedCliente]);
+
+	useEffect(() => {
+		console.log("🔄 useEffect do profile disparado");
+		console.log("Profile atual:", profile);
+
+		if (profile?.role === "gestor") {
+			console.log(
+				`🎯 Gestor detectado! ID: ${profile.id}, Name: ${profile.name}`,
+			);
+			console.log("📞 Chamando carregarParceirosDoGestor...");
+			carregarParceirosDoGestor(profile.id);
+		} else {
+			console.log(`👤 Usuário não é gestor. Role: ${profile?.role}`);
+		}
+	}, [profile]);
+
+	// Teste direto de query
+	useEffect(() => {
+		if (profile?.role === "gestor") {
+			setTimeout(() => {
+				testarConexaoParceiros();
+			}, 1000);
+		}
+	}, [profile]);
+
+	const testarConexaoParceiros = async () => {
+		if (!profile) {
+			return;
+		}
+
+		console.log("🧪 TESTE DIRETO DE QUERY 🧪");
+
+		// Teste 1: Query sem JOIN
+		console.log("\n1. Query SEM JOIN:");
+		const { data: simples, error: erroSimples } = await supabase
+			.from("gestor_parceiros")
+			.select("*")
+			.eq("gestor_id", profile.id);
+		console.log("Resultado:", simples);
+		console.log("Erro:", erroSimples);
+
+		// Teste 2: Query com JOIN manual
+		console.log("\n2. Query em 2 PASSOS:");
+		if (simples && simples.length > 0) {
+			const parceiroIds = simples.map((r: any) => r.parceiro_id);
+			console.log("IDs dos parceiros:", parceiroIds);
+
+			const { data: profiles, error: erroProfiles } = await supabase
+				.from("profiles")
+				.select("id, name, email")
+				.in("id", parceiroIds);
+			console.log("Perfis encontrados:", profiles);
+			console.log("Erro perfis:", erroProfiles);
+		}
+
+		// Teste 3: Verificar se o parceiro existe
+		console.log("\n3. Verificar parceiro específico:");
+		const { data: parceiroMaria, error: _erroMaria } = await supabase
+			.from("profiles")
+			.select("*")
+			.eq("id", "d2da4307-97a9-4db0-9106-fa1572244ebc");
+		console.log("Parceiro Maria existe?", parceiroMaria);
+
+		// Teste 4: Query alternativa com JOIN
+		console.log("\n4. Query alternativa com JOIN:");
+		const { data: alternativa, error: erroAlt } = await supabase
+			.from("gestor_parceiros")
+			.select(`
+				parceiro_id,
+				parceiro:parceiro_id(id, name, email)
+			`)
+			.eq("gestor_id", profile.id);
+		console.log("Alternativa:", alternativa);
+		console.log("Erro alternativa:", erroAlt);
+	};
 
 	const checkAuth = async () => {
 		try {
@@ -198,6 +275,11 @@ export default function ClientesPage() {
 
 	const carregarParceirosDoGestor = async (gestorId: string) => {
 		try {
+			console.log(
+				`🔍 INICIANDO carregarParceirosDoGestor para gestor: ${gestorId}`,
+			);
+
+			console.log("📤 Enviando query para Supabase...");
 			const { data, error } = await supabase
 				.from("gestor_parceiros")
 				.select(
@@ -208,28 +290,67 @@ export default function ClientesPage() {
 				)
 				.eq("gestor_id", gestorId);
 
+			console.log("📥 Resposta recebida:");
+			console.log("- Data:", data);
+			console.log("- Error:", error);
+			console.log("- Data type:", typeof data);
+			console.log("- Data length:", data?.length);
+
 			if (error) {
-				throw error;
+				console.error("❌ Erro SUPABASE:", {
+					code: error.code,
+					message: error.message,
+					details: error.details,
+					hint: error.hint,
+				});
+				return;
 			}
 
-			if (data) {
-				const parceiros = data.map((p: any) => ({
-					id: p.profiles.id,
-					name: p.profiles.name,
-					email: p.profiles.email,
-				}));
+			console.log("🔍 Analisando dados recebidos...");
+
+			if (data && data.length > 0) {
+				console.log(
+					`✅ Encontrados ${data.length} registros na tabela gestor_parceiros`,
+				);
+
+				// Verificar estrutura dos dados
+				console.log("Estrutura do primeiro registro:", data[0]);
+				console.log("Tem parceiro_id?", "parceiro_id" in data[0]);
+				console.log("Tem profiles?", "profiles" in data[0]);
+				console.log("Profiles é:", data[0].profiles);
+
+				const parceiros = data.map((p: any) => {
+					console.log("Processando registro:", p);
+					return {
+						id: p.profiles.id,
+						name: p.profiles.name,
+						email: p.profiles.email,
+					};
+				});
+
+				console.log(
+					`✅ ${parceiros.length} parceiros mapeados:`,
+					parceiros,
+				);
 				setParceirosDoGestor(parceiros);
+			} else {
+				console.log("⚠️ Nenhum dado retornado ou array vazio");
+				console.log("Data é null?", data === null);
+				console.log("Data é undefined?", data === undefined);
+				console.log(
+					"Data é array vazio?",
+					Array.isArray(data) && data.length === 0,
+				);
+				setParceirosDoGestor([]);
 			}
 		} catch (err) {
-			console.error("Erro ao carregar parceiros:", err);
+			console.error("Erro CATCH:", err);
 		}
 	};
 
 	const loadClientes = async (userRole?: string, userId?: string) => {
 		try {
-			console.log(
-				`📊 Carregando clientes para ${userRole} (ID: ${userId})`,
-			);
+			console.log(`Carregando clientes para ${userRole} (ID: ${userId})`);
 
 			let query = supabase.from("clientes").select("*");
 
@@ -257,14 +378,14 @@ export default function ClientesPage() {
 			}
 
 			console.log(
-				`✅ ${data?.length || 0} clientes carregados para ${userRole}`,
+				`${data?.length || 0} clientes carregados para ${userRole}`,
 			);
 
 			const clientesComInfo = await carregarInfosResponsaveis(data || []);
 			setClientes(clientesComInfo);
 			setFilteredClientes(clientesComInfo);
 		} catch (err) {
-			console.error("💥 Erro inesperado ao carregar clientes:", err);
+			console.error("Erro inesperado ao carregar clientes:", err);
 			setClientes([]);
 			setFilteredClientes([]);
 		}
@@ -274,9 +395,7 @@ export default function ClientesPage() {
 		gestorId: string,
 	): Promise<string[]> => {
 		if (!gestorId) {
-			console.error(
-				"❌ gestorId não fornecido para getClienteIdsDoGestor",
-			);
+			console.error("gestorId não fornecido para getClienteIdsDoGestor");
 			return [];
 		}
 
@@ -311,7 +430,7 @@ export default function ClientesPage() {
 
 			return clientes.map((c) => c.id);
 		} catch (err) {
-			console.error("💥 Erro inesperado em getClienteIdsDoGestor:", err);
+			console.error("❌ Erro inesperado em getClienteIdsDoGestor:", err);
 			return [];
 		}
 	};
@@ -395,7 +514,7 @@ export default function ClientesPage() {
 			});
 		} catch (error) {
 			console.error(
-				"💥 Erro inesperado em carregarInfosResponsaveis:",
+				"❌ Erro inesperado em carregarInfosResponsaveis:",
 				error,
 			);
 			return clientes.map((cliente) => ({
@@ -563,8 +682,21 @@ export default function ClientesPage() {
 		setModalDetalhesOpen(true);
 	};
 
-	const handleEditar = (cliente: Cliente) => {
+	const handleEditar = async (cliente: Cliente) => {
 		setClienteEditando({ ...cliente });
+
+		// Se o gestor está editando, carregar parceiros
+		if (profile?.role === "gestor") {
+			await carregarParceirosDoGestor(profile.id);
+
+			// Se o cliente já tem um parceiro, selecioná-lo
+			if (cliente.responsavelId) {
+				setParceiroSelecionadoEdicao(cliente.responsavelId);
+			} else {
+				setParceiroSelecionadoEdicao("");
+			}
+		}
+
 		setModalEditarOpen(true);
 	};
 
@@ -591,19 +723,46 @@ export default function ClientesPage() {
 		setEditandoLoading(true);
 
 		try {
+			// Preparar dados para atualização
+			const dadosAtualizacao: any = {
+				name: clienteEditando.name,
+				email: clienteEditando.email,
+				telefone: clienteEditando.telefone,
+				nif: clienteEditando.nif,
+				codigoPostal: clienteEditando.codigoPostal,
+				endereco: clienteEditando.endereco,
+				status: clienteEditando.status,
+				produto: clienteEditando.produto,
+				updatedAt: new Date().toISOString(),
+			};
+
+			// Se for gestor e estiver editando um cliente dele, permitir alterar o responsavelId
+			if (
+				profile.role === "gestor" &&
+				clienteEditando.profileId === profile.id
+			) {
+				// Validar se o parceiro selecionado é válido
+				if (parceiroSelecionadoEdicao) {
+					const parceiroValido = parceirosDoGestor.find(
+						(p) => p.id === parceiroSelecionadoEdicao,
+					);
+
+					if (!parceiroValido) {
+						alert("Este parceiro não está vinculado a você");
+						setEditandoLoading(false);
+						return;
+					}
+
+					dadosAtualizacao.responsavelId = parceiroSelecionadoEdicao;
+				} else {
+					// Remover atribuição se selecionou "Nenhum"
+					dadosAtualizacao.responsavelId = null;
+				}
+			}
+
 			const { error } = await supabase
 				.from("clientes")
-				.update({
-					name: clienteEditando.name,
-					email: clienteEditando.email,
-					telefone: clienteEditando.telefone,
-					nif: clienteEditando.nif,
-					codigoPostal: clienteEditando.codigoPostal,
-					endereco: clienteEditando.endereco,
-					status: clienteEditando.status,
-					produto: clienteEditando.produto,
-					updatedAt: new Date().toISOString(),
-				})
+				.update(dadosAtualizacao)
 				.eq("id", clienteEditando.id);
 
 			if (error) {
@@ -613,9 +772,13 @@ export default function ClientesPage() {
 			await loadClientes(profile.role, profile.id);
 			setModalEditarOpen(false);
 			setClienteEditando(null);
+			setParceiroSelecionadoEdicao("");
 			alert("Cliente atualizado com sucesso!");
-		} catch (_err) {
-			alert("Erro ao atualizar cliente");
+		} catch (err: any) {
+			console.error("Erro ao atualizar:", err);
+			alert(
+				`Erro ao atualizar cliente: ${err.message || "Tente novamente"}`,
+			);
 		} finally {
 			setEditandoLoading(false);
 		}
@@ -775,6 +938,7 @@ export default function ClientesPage() {
 	const closeModalEditar = () => {
 		setModalEditarOpen(false);
 		setClienteEditando(null);
+		setParceiroSelecionadoEdicao("");
 	};
 
 	const closeModalAdicionar = () => {
@@ -1645,109 +1809,123 @@ export default function ClientesPage() {
 										}}
 										className="space-y-6"
 									>
-										{profile?.role === "gestor" &&
-											parceirosDoGestor.length > 0 && (
-												<div className="space-y-4">
-													<div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-														<h4 className="font-medium text-blue-800 flex items-center gap-2">
-															<Users size={16} />
-															Atribuição de
-															Responsável
-															(Opcional)
-														</h4>
-														<p className="text-sm text-blue-600 mt-1">
-															Você pode atribuir
-															este cliente a um
-															parceiro ou manter a
-															responsabilidade
-														</p>
+										{profile?.role === "gestor" && (
+											<div className="space-y-4">
+												<div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+													<h4 className="font-medium text-blue-800 flex items-center gap-2">
+														<Users size={16} />
+														Atribuir a Parceiro
+														(Opcional)
+													</h4>
+													<p className="text-sm text-blue-600 mt-1">
+														Escolha um parceiro para
+														gerenciar este cliente
+														ou deixe em branco para
+														você mesmo gerenciar
+													</p>
 
-														<div className="mt-3 space-y-2">
-															<label className="flex items-center gap-2 p-2 border rounded-lg hover:bg-blue-50 cursor-pointer">
-																<input
-																	type="radio"
-																	name="responsavel"
-																	value=""
-																	checked={
-																		parceiroSelecionado ===
-																		""
-																	}
-																	onChange={(
-																		e,
-																	) =>
-																		setParceiroSelecionado(
-																			e
-																				.target
-																				.value,
-																		)
-																	}
-																	className="text-blue-600"
-																/>
-																<div>
-																	<div className="font-medium">
-																		Eu mesmo
-																		(Gestor)
-																	</div>
-																	<div className="text-xs text-gray-500">
-																		Você
-																		será o
-																		responsável
-																		por este
-																		cliente
-																	</div>
-																</div>
-															</label>
+													{/* LOG DE DEBUG ADICIONADO */}
+													<div className="text-xs text-gray-500 mb-2">
+														Debug:{" "}
+														{
+															parceirosDoGestor.length
+														}{" "}
+														parceiros carregados
+													</div>
 
+													<div className="mt-3">
+														<label
+															htmlFor="parceiro-select"
+															className="block text-sm font-medium text-gray-700 mb-1"
+														>
+															Selecionar Parceiro
+														</label>
+														<select
+															id="parceiro-select"
+															value={
+																parceiroSelecionado
+															}
+															onChange={(e) =>
+																setParceiroSelecionado(
+																	e.target
+																		.value,
+																)
+															}
+															className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+														>
+															<option value="">
+																Nenhum (eu mesmo
+																gerencio)
+															</option>
 															{parceirosDoGestor.map(
 																(parceiro) => (
-																	<label
+																	<option
 																		key={
 																			parceiro.id
 																		}
-																		className="flex items-center gap-2 p-2 border rounded-lg hover:bg-blue-50 cursor-pointer"
+																		value={
+																			parceiro.id
+																		}
 																	>
-																		<input
-																			type="radio"
-																			name="responsavel"
-																			value={
-																				parceiro.id
-																			}
-																			checked={
-																				parceiroSelecionado ===
-																				parceiro.id
-																			}
-																			onChange={(
-																				e,
-																			) =>
-																				setParceiroSelecionado(
-																					e
-																						.target
-																						.value,
-																				)
-																			}
-																			className="text-blue-600"
-																		/>
-																		<div>
-																			<div className="font-medium">
-																				{
-																					parceiro.name
-																				}
-																			</div>
-																			<div className="text-xs text-gray-500">
-																				Parceiro
-																				•{" "}
-																				{
-																					parceiro.email
-																				}
-																			</div>
-																		</div>
-																	</label>
+																		{
+																			parceiro.name
+																		}{" "}
+																		•{" "}
+																		{
+																			parceiro.email
+																		}
+																	</option>
 																),
 															)}
+														</select>
+
+														{/* LOG DOS PARCEIROS ADICIONADO */}
+														<div className="mt-2 text-xs text-gray-500">
+															Parceiros
+															disponíveis:{" "}
+															{
+																parceirosDoGestor.length
+															}
+															{parceirosDoGestor.length >
+																0 && (
+																<ul className="mt-1">
+																	{parceirosDoGestor.map(
+																		(p) => (
+																			<li
+																				key={
+																					p.id
+																				}
+																			>
+																				-{" "}
+																				{
+																					p.name
+																				}{" "}
+																				(
+																				{
+																					p.email
+																				}
+																				)
+																			</li>
+																		),
+																	)}
+																</ul>
+															)}
 														</div>
+
+														{parceirosDoGestor.length ===
+															0 && (
+															<p className="text-sm text-gray-500 mt-2">
+																Você não tem
+																parceiros
+																vinculados.
+																Entre em contato
+																com o tenant.
+															</p>
+														)}
 													</div>
 												</div>
-											)}
+											</div>
+										)}
 
 										<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 											<div className="space-y-6">
@@ -2782,6 +2960,95 @@ export default function ClientesPage() {
 												</div>
 											</div>
 										</div>
+
+										{profile?.role === "gestor" &&
+											clienteEditando.profileId ===
+												profile.id && (
+												<div className="space-y-4 mt-4">
+													<div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+														<h4 className="font-medium text-blue-800 flex items-center gap-2">
+															<Users size={16} />
+															Atribuição do
+															Cliente
+														</h4>
+														<p className="text-sm text-blue-600 mt-1">
+															Gerencie quem é
+															responsável por este
+															cliente
+														</p>
+
+														<div className="mt-3">
+															<label
+																htmlFor="parceiro-select-edicao"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Responsável
+															</label>
+															<select
+																id="parceiro-select-edicao"
+																value={
+																	parceiroSelecionadoEdicao
+																}
+																onChange={(e) =>
+																	setParceiroSelecionadoEdicao(
+																		e.target
+																			.value,
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+															>
+																<option value="">
+																	Eu mesmo
+																	(Gestor)
+																</option>
+																{parceirosDoGestor.map(
+																	(
+																		parceiro,
+																	) => (
+																		<option
+																			key={
+																				parceiro.id
+																			}
+																			value={
+																				parceiro.id
+																			}
+																		>
+																			{
+																				parceiro.name
+																			}{" "}
+																			•{" "}
+																			{
+																				parceiro.email
+																			}
+																		</option>
+																	),
+																)}
+															</select>
+
+															{clienteEditando.responsavelId && (
+																<div className="mt-2 text-sm">
+																	<p className="text-gray-600">
+																		Atualmente
+																		atribuído
+																		a:{" "}
+																		<span className="font-medium">
+																			{parceirosDoGestor.find(
+																				(
+																					p,
+																				) =>
+																					p.id ===
+																					clienteEditando.responsavelId,
+																			)
+																				?.name ||
+																				"Carregando..."}
+																		</span>
+																	</p>
+																</div>
+															)}
+														</div>
+													</div>
+												</div>
+											)}
 
 										<div className="mt-8 bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
 											<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
