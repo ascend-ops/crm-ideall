@@ -84,6 +84,9 @@ const STATUS_COLORS = {
 	fidelizado: "bg-purple-100 text-purple-800 border-purple-200",
 };
 
+// Opções de produto para dropdown
+const PRODUTO_OPTIONS = ["internet", "energia"];
+
 export default function ClientesPage() {
 	const router = useRouter();
 	const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1014,9 +1017,9 @@ export default function ClientesPage() {
 			cliente.produto,
 			cliente.codigoPostal,
 			cliente.endereco,
-			new Date(cliente.createdAt).toLocaleDateString("pt-BR"),
+			new Date(cliente.createdAt).toLocaleDateString("pt-PT"),
 			cliente.dataFimContrato
-				? new Date(cliente.dataFimContrato).toLocaleDateString("pt-BR")
+				? new Date(cliente.dataFimContrato).toLocaleDateString("pt-PT")
 				: "-",
 			cliente.parceiroNome || "",
 			cliente.gestorNome || "-",
@@ -1568,33 +1571,47 @@ export default function ClientesPage() {
 														>
 															<Eye size={18} />
 														</button>
-														<button
-															type="button"
-															onClick={() =>
-																handleEditar(
-																	cliente,
-																)
-															}
-															className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
-															title="Editar"
-															aria-label={`Editar cliente ${cliente.name}`}
-														>
-															<Edit size={18} />
-														</button>
-														<button
-															type="button"
-															onClick={() =>
-																handleDeletar(
-																	cliente.id,
-																	cliente.name,
-																)
-															}
-															className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-															title="Excluir"
-															aria-label={`Excluir cliente ${cliente.name}`}
-														>
-															<Trash2 size={18} />
-														</button>
+														{/* Remover opções de editar e excluir para parceiros */}
+														{profile.role !==
+															"parceiro" && (
+															<>
+																<button
+																	type="button"
+																	onClick={() =>
+																		handleEditar(
+																			cliente,
+																		)
+																	}
+																	className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
+																	title="Editar"
+																	aria-label={`Editar cliente ${cliente.name}`}
+																>
+																	<Edit
+																		size={
+																			18
+																		}
+																	/>
+																</button>
+																<button
+																	type="button"
+																	onClick={() =>
+																		handleDeletar(
+																			cliente.id,
+																			cliente.name,
+																		)
+																	}
+																	className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+																	title="Excluir"
+																	aria-label={`Excluir cliente ${cliente.name}`}
+																>
+																	<Trash2
+																		size={
+																			18
+																		}
+																	/>
+																</button>
+															</>
+														)}
 													</div>
 												</td>
 											</tr>
@@ -2016,7 +2033,7 @@ export default function ClientesPage() {
 																	)
 																}
 																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-																placeholder="(00) 00000-0000"
+																placeholder="912 345 678"
 															/>
 														</div>
 													</div>
@@ -2052,7 +2069,7 @@ export default function ClientesPage() {
 																	)
 																}
 																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-																placeholder="000.000.000-00"
+																placeholder="123456789"
 															/>
 														</div>
 													</div>
@@ -2119,7 +2136,7 @@ export default function ClientesPage() {
 																	)
 																}
 																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-																placeholder="00000-000"
+																placeholder="1000-001"
 															/>
 														</div>
 													</div>
@@ -2138,9 +2155,8 @@ export default function ClientesPage() {
 															>
 																Produto *
 															</label>
-															<input
+															<select
 																id="novo-produto"
-																type="text"
 																value={
 																	novoCliente.produto
 																}
@@ -2157,8 +2173,35 @@ export default function ClientesPage() {
 																}
 																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
 																required
-																placeholder="Ex: Internet, TV, Energia"
-															/>
+															>
+																<option value="">
+																	Selecione um
+																	produto
+																</option>
+																{PRODUTO_OPTIONS.map(
+																	(
+																		produto,
+																	) => (
+																		<option
+																			key={
+																				produto
+																			}
+																			value={
+																				produto
+																			}
+																		>
+																			{produto
+																				.charAt(
+																					0,
+																				)
+																				.toUpperCase() +
+																				produto.slice(
+																					1,
+																				)}
+																		</option>
+																	),
+																)}
+															</select>
 														</div>
 														<div>
 															<label
@@ -2223,29 +2266,11 @@ export default function ClientesPage() {
 											<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 												<div className="bg-white p-4 rounded-lg border">
 													<p className="text-sm text-gray-500">
-														Responsável
-													</p>
-													<p className="font-medium">
-														{profile?.name ||
-															"Carregando..."}
-													</p>
-												</div>
-												<div className="bg-white p-4 rounded-lg border">
-													<p className="text-sm text-gray-500">
-														Tipo de Usuário
-													</p>
-													<p className="font-medium capitalize">
-														{profile?.role ||
-															"Carregando..."}
-													</p>
-												</div>
-												<div className="bg-white p-4 rounded-lg border">
-													<p className="text-sm text-gray-500">
 														Data de Criação
 													</p>
 													<p className="font-medium">
 														{new Date().toLocaleDateString(
-															"pt-BR",
+															"pt-PT",
 														)}
 													</p>
 												</div>
@@ -2529,14 +2554,14 @@ export default function ClientesPage() {
 													{new Date(
 														selectedCliente.createdAt,
 													).toLocaleDateString(
-														"pt-BR",
+														"pt-PT",
 													)}
 												</p>
 												<p className="text-xs text-gray-400 mt-1">
 													{new Date(
 														selectedCliente.createdAt,
 													).toLocaleTimeString(
-														"pt-BR",
+														"pt-PT",
 													)}
 												</p>
 											</div>
@@ -2548,14 +2573,14 @@ export default function ClientesPage() {
 													{new Date(
 														selectedCliente.updatedAt,
 													).toLocaleDateString(
-														"pt-BR",
+														"pt-PT",
 													)}
 												</p>
 												<p className="text-xs text-gray-400 mt-1">
 													{new Date(
 														selectedCliente.updatedAt,
 													).toLocaleTimeString(
-														"pt-BR",
+														"pt-PT",
 													)}
 												</p>
 											</div>
@@ -2760,7 +2785,7 @@ export default function ClientesPage() {
 																	)
 																}
 																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-																placeholder="(00) 00000-0000"
+																placeholder="912 345 678"
 															/>
 														</div>
 													</div>
@@ -2797,7 +2822,7 @@ export default function ClientesPage() {
 																	)
 																}
 																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-																placeholder="000.000.000-00"
+																placeholder="123456789"
 															/>
 														</div>
 													</div>
@@ -2866,7 +2891,7 @@ export default function ClientesPage() {
 																	)
 																}
 																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-																placeholder="00000-000"
+																placeholder="1000-001"
 															/>
 														</div>
 													</div>
@@ -2885,9 +2910,8 @@ export default function ClientesPage() {
 															>
 																Produto
 															</label>
-															<input
+															<select
 																id="edit-produto"
-																type="text"
 																value={
 																	clienteEditando.produto ||
 																	""
@@ -2904,8 +2928,35 @@ export default function ClientesPage() {
 																	)
 																}
 																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-																placeholder="Ex: Internet, TV, Telefone"
-															/>
+															>
+																<option value="">
+																	Selecione um
+																	produto
+																</option>
+																{PRODUTO_OPTIONS.map(
+																	(
+																		produto,
+																	) => (
+																		<option
+																			key={
+																				produto
+																			}
+																			value={
+																				produto
+																			}
+																		>
+																			{produto
+																				.charAt(
+																					0,
+																				)
+																				.toUpperCase() +
+																				produto.slice(
+																					1,
+																				)}
+																		</option>
+																	),
+																)}
+															</select>
 														</div>
 														<div>
 															<label
@@ -3064,7 +3115,7 @@ export default function ClientesPage() {
 														{new Date(
 															clienteEditando.createdAt,
 														).toLocaleDateString(
-															"pt-BR",
+															"pt-PT",
 														)}
 													</p>
 												</div>
@@ -3076,7 +3127,7 @@ export default function ClientesPage() {
 														{new Date(
 															clienteEditando.updatedAt,
 														).toLocaleDateString(
-															"pt-BR",
+															"pt-PT",
 														)}
 													</p>
 												</div>

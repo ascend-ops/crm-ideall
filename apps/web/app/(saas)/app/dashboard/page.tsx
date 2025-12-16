@@ -19,6 +19,7 @@ interface Cliente {
 	status: string;
 	name: string;
 	email: string;
+	createdAt: string;
 }
 
 interface User {
@@ -48,6 +49,15 @@ interface GestorCardData {
 	};
 }
 
+interface MonthlyData {
+	month: string;
+	aprovado: number;
+	"em análise": number;
+	"aguardando documentos": number;
+	reprovado: number;
+	fidelizado: number;
+}
+
 const STATUS_ORDER = [
 	"aprovado",
 	"em análise",
@@ -64,6 +74,21 @@ const STATUS_COLORS = {
 	fidelizado: "#8b5cf6",
 };
 
+const MONTHS = [
+	"Janeiro",
+	"Fevereiro",
+	"Março",
+	"Abril",
+	"Maio",
+	"Junho",
+	"Julho",
+	"Agosto",
+	"Setembro",
+	"Outubro",
+	"Novembro",
+	"Dezembro",
+];
+
 export default function DashboardPage() {
 	const router = useRouter();
 	const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -74,6 +99,14 @@ export default function DashboardPage() {
 	const [clientes, setClientes] = useState<Cliente[]>([]);
 	const [gestoresCards, setGestoresCards] = useState<GestorCardData[]>([]);
 	const [loading, setLoading] = useState(true);
+
+	// Estados para filtro de mês/ano
+	const [selectedMonth, setSelectedMonth] = useState<string>("all");
+	const [selectedYear, setSelectedYear] = useState<string>("all");
+	const [filteredChartData, setFilteredChartData] = useState<MonthlyData[]>(
+		[],
+	);
+	const [showAllData, setShowAllData] = useState<boolean>(false);
 
 	useEffect(() => {
 		console.log("🚀 Dashboard montado - iniciando checkAuth");
@@ -146,7 +179,7 @@ export default function DashboardPage() {
 		try {
 			const { data, error } = await supabase
 				.from("clientes")
-				.select("status, name, email");
+				.select("status, name, email, createdAt");
 
 			if (error) {
 				console.error("❌ Erro ao carregar clientes:", error);
@@ -236,6 +269,103 @@ export default function DashboardPage() {
 		}
 	};
 
+	// Processar dados para o gráfico com filtro de mês/ano
+	useEffect(() => {
+		if (clientes.length === 0) {
+			setFilteredChartData([]);
+			return;
+		}
+
+		let chartData: MonthlyData[] = [];
+
+		if (showAllData) {
+			// Modo "Todos" - mostrar todos os dados
+			const allData: MonthlyData = {
+				month: "Todos os meses",
+				aprovado: 0,
+				"em análise": 0,
+				"aguardando documentos": 0,
+				reprovado: 0,
+				fidelizado: 0,
+			};
+
+			clientes.forEach((cliente) => {
+				const status = cliente.status as keyof MonthlyData;
+				if (status in allData) {
+					allData[status]++;
+				}
+			});
+
+			chartData = [allData];
+			console.log("📊 Mostrando TODOS os dados:", allData);
+		} else if (selectedMonth !== "all" && selectedYear !== "all") {
+			// Modo filtrado por mês/ano específico
+			const monthNum = Number.parseInt(selectedMonth);
+			const yearNum = Number.parseInt(selectedYear);
+
+			// Filtrar clientes pelo mês e ano selecionados
+			const filteredClientes = clientes.filter((cliente) => {
+				const clienteDate = new Date(cliente.createdAt);
+				return (
+					clienteDate.getMonth() === monthNum &&
+					clienteDate.getFullYear() === yearNum
+				);
+			});
+
+			// Criar estrutura de dados mensal
+			const monthlyData: MonthlyData = {
+				month: MONTHS[monthNum],
+				aprovado: 0,
+				"em análise": 0,
+				"aguardando documentos": 0,
+				reprovado: 0,
+				fidelizado: 0,
+			};
+
+			// Contar clientes por status
+			filteredClientes.forEach((cliente) => {
+				const status = cliente.status as keyof MonthlyData;
+				if (status in monthlyData) {
+					monthlyData[status]++;
+				}
+			});
+
+			chartData = [monthlyData];
+			console.log(
+				`📊 Dados filtrados para ${MONTHS[monthNum]}/${yearNum}:`,
+				{
+					totalClientes: filteredClientes.length,
+					monthlyData,
+				},
+			);
+		} else {
+			// Se algum dos filtros estiver como "all", mostrar todos os dados
+			const allData: MonthlyData = {
+				month: "Todos",
+				aprovado: 0,
+				"em análise": 0,
+				"aguardando documentos": 0,
+				reprovado: 0,
+				fidelizado: 0,
+			};
+
+			clientes.forEach((cliente) => {
+				const status = cliente.status as keyof MonthlyData;
+				if (status in allData) {
+					allData[status]++;
+				}
+			});
+
+			chartData = [allData];
+			console.log(
+				"📊 Mostrando todos os dados (filtro incompleto):",
+				allData,
+			);
+		}
+
+		setFilteredChartData(chartData);
+	}, [clientes, selectedMonth, selectedYear, showAllData]);
+
 	useEffect(() => {
 		console.log("🔄 Estado atualizado:", {
 			loading,
@@ -243,17 +373,27 @@ export default function DashboardPage() {
 			clientesCount: clientes.length,
 			role: profile?.role,
 			gestoresCount: gestoresCards.length,
+			selectedMonth,
+			selectedYear,
+			showAllData,
 		});
-	}, [loading, user, clientes, profile, gestoresCards]);
+	}, [
+		loading,
+		user,
+		clientes,
+		profile,
+		gestoresCards,
+		selectedMonth,
+		selectedYear,
+		showAllData,
+	]);
 
-	const chartData = STATUS_ORDER.map((status) => {
-		const count = clientes.filter((c) => c.status === status).length;
-		return {
-			status: status.charAt(0).toUpperCase() + status.slice(1),
-			quantidade: count,
-			fill: STATUS_COLORS[status as keyof typeof STATUS_COLORS],
-		};
-	});
+	// Gerar anos disponíveis (últimos 5 anos + ano atual)
+	const currentYear = new Date().getFullYear();
+	const availableYears = Array.from(
+		{ length: 6 },
+		(_, i) => currentYear - 5 + i,
+	).filter((year) => year <= currentYear);
 
 	const handleNavigation = (path: string) => {
 		router.push(path);
@@ -277,6 +417,15 @@ export default function DashboardPage() {
 		}
 	};
 
+	const toggleShowAllData = () => {
+		setShowAllData(!showAllData);
+		// Resetar filtros quando ativar "Todos"
+		if (!showAllData) {
+			setSelectedMonth("all");
+			setSelectedYear("all");
+		}
+	};
+
 	if (loading) {
 		return (
 			<div className="p-6">
@@ -288,6 +437,19 @@ export default function DashboardPage() {
 	if (!user || !profile) {
 		return null;
 	}
+
+	// Criar dados filtrados para o gráfico
+	const filteredChartDataForGraph = STATUS_ORDER.map((status) => {
+		const monthlyData = filteredChartData[0];
+		const count = monthlyData
+			? monthlyData[status as keyof MonthlyData]
+			: 0;
+		return {
+			status: status.charAt(0).toUpperCase() + status.slice(1),
+			quantidade: count,
+			fill: STATUS_COLORS[status as keyof typeof STATUS_COLORS],
+		};
+	});
 
 	return (
 		<div className="flex min-h-screen bg-gray-50">
@@ -448,7 +610,174 @@ export default function DashboardPage() {
 						)}
 					</div>
 
-					{/* Gestores */}
+					{/* Gráfico */}
+					<div className="bg-white p-6 rounded-lg shadow border">
+						<div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+							<h2 className="text-xl font-semibold text-gray-800">
+								Distribuição por Status
+								{profile?.role === "gestor" && (
+									<span className="text-sm font-normal ml-2 text-gray-500">
+										(Seus clientes)
+									</span>
+								)}
+								{profile?.role === "tenant" && (
+									<span className="text-sm font-normal ml-2 text-gray-500">
+										(Todos os clientes do tenant)
+									</span>
+								)}
+							</h2>
+
+							{/* Botão para mostrar todos os dados */}
+							<div className="flex items-center gap-3">
+								<button
+									type="button"
+									onClick={toggleShowAllData}
+									className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+										showAllData
+											? "bg-green-600 text-white hover:bg-green-700"
+											: "bg-gray-200 text-gray-700 hover:bg-gray-300"
+									}`}
+								>
+									<span className="text-sm font-medium">
+										{showAllData
+											? "Todos Ativo"
+											: "Mostrar Todos"}
+									</span>
+								</button>
+
+								{/* Filtro de Mês/Ano - desabilitado quando "Todos" está ativo */}
+								<div className="flex items-center gap-3">
+									<div>
+										<label
+											htmlFor="month-filter"
+											className="block text-sm font-medium text-gray-700 mb-1"
+										>
+											Mês
+										</label>
+										<select
+											id="month-filter"
+											value={selectedMonth}
+											onChange={(e) =>
+												setSelectedMonth(e.target.value)
+											}
+											disabled={showAllData}
+											className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${
+												showAllData
+													? "bg-gray-100 text-gray-500 cursor-not-allowed"
+													: ""
+											}`}
+										>
+											<option value="all">Todos</option>
+											{MONTHS.map((month, index) => (
+												<option
+													key={month}
+													value={index}
+												>
+													{month}
+												</option>
+											))}
+										</select>
+									</div>
+
+									<div>
+										<label
+											htmlFor="year-filter"
+											className="block text-sm font-medium text-gray-700 mb-1"
+										>
+											Ano
+										</label>
+										<select
+											id="year-filter"
+											value={selectedYear}
+											onChange={(e) =>
+												setSelectedYear(e.target.value)
+											}
+											disabled={showAllData}
+											className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${
+												showAllData
+													? "bg-gray-100 text-gray-500 cursor-not-allowed"
+													: ""
+											}`}
+										>
+											<option value="all">Todos</option>
+											{availableYears.map((year) => (
+												<option key={year} value={year}>
+													{year}
+												</option>
+											))}
+										</select>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<div className="mb-4 text-sm text-gray-600">
+							{showAllData ? (
+								<p>
+									Mostrando <strong>TODOS os dados</strong>{" "}
+									(sem filtro de mês/ano)
+								</p>
+							) : selectedMonth === "all" ||
+								selectedYear === "all" ? (
+								<p>
+									Mostrando <strong>TODOS os dados</strong>{" "}
+									(selecione mês e ano para filtrar)
+								</p>
+							) : (
+								<p>
+									Mostrando dados para{" "}
+									<strong>
+										{MONTHS[Number.parseInt(selectedMonth)]}{" "}
+										de {selectedYear}
+									</strong>
+									{filteredChartData.length > 0 && (
+										<span className="ml-2">
+											• Total no período:{" "}
+											<strong>
+												{Object.values(
+													filteredChartData[0] || {},
+												)
+													.slice(1)
+													.reduce((a, b) => a + b, 0)}
+											</strong>{" "}
+											clientes
+										</span>
+									)}
+								</p>
+							)}
+							<p className="mt-1">
+								Total geral de clientes:{" "}
+								<strong>{clientes.length}</strong>
+							</p>
+						</div>
+
+						<ResponsiveContainer width="100%" height={400}>
+							<BarChart
+								data={filteredChartDataForGraph}
+								margin={{
+									top: 20,
+									right: 30,
+									left: 20,
+									bottom: 5,
+								}}
+							>
+								<CartesianGrid strokeDasharray="3 3" />
+								<XAxis
+									dataKey="status"
+									angle={-45}
+									textAnchor="end"
+									height={80}
+									tick={{ fontSize: 12 }}
+								/>
+								<YAxis />
+								<Tooltip />
+								<Legend />
+								<Bar dataKey="quantidade" fill="#8884d8" />
+							</BarChart>
+						</ResponsiveContainer>
+					</div>
+
+					{/* Gestores (agora abaixo do gráfico) */}
 					{profile?.role === "tenant" && (
 						<>
 							{gestoresCards.length > 0 ? (
@@ -567,48 +896,6 @@ export default function DashboardPage() {
 							)}
 						</>
 					)}
-
-					{/* Gráfico */}
-					<div className="bg-white p-6 rounded-lg shadow border">
-						<h2 className="text-xl font-semibold mb-6 text-gray-800">
-							Distribuição por Status
-							{profile?.role === "gestor" && (
-								<span className="text-sm font-normal ml-2 text-gray-500">
-									(Seus clientes)
-								</span>
-							)}
-							{profile?.role === "tenant" && (
-								<span className="text-sm font-normal ml-2 text-gray-500">
-									(Todos os clientes do tenant)
-								</span>
-							)}
-						</h2>
-
-						<ResponsiveContainer width="100%" height={400}>
-							<BarChart
-								data={chartData}
-								margin={{
-									top: 20,
-									right: 30,
-									left: 20,
-									bottom: 5,
-								}}
-							>
-								<CartesianGrid strokeDasharray="3 3" />
-								<XAxis
-									dataKey="status"
-									angle={-45}
-									textAnchor="end"
-									height={80}
-									tick={{ fontSize: 12 }}
-								/>
-								<YAxis />
-								<Tooltip />
-								<Legend />
-								<Bar dataKey="quantidade" fill="#8884d8" />
-							</BarChart>
-						</ResponsiveContainer>
-					</div>
 
 					{/* Card de gestor */}
 					{profile?.role === "gestor" && (
