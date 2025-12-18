@@ -68,6 +68,17 @@ interface Parceiro {
 	email: string;
 }
 
+interface Observacao {
+	id: string;
+	cliente_id: string;
+	profile_id: string;
+	observacao: string;
+	created_at: string;
+	profile_nome: string;
+	profile_email: string;
+	profile_role: string;
+}
+
 const STATUS_OPTIONS = [
 	"aprovado",
 	"em análise",
@@ -86,6 +97,20 @@ const STATUS_COLORS = {
 
 // Opções de produto para dropdown
 const PRODUTO_OPTIONS = ["internet", "energia"];
+
+// Função auxiliar para formatar datas para input type="date"
+const formatDateForInput = (dateString: string | null): string => {
+	if (!dateString) {
+		return "";
+	}
+
+	try {
+		const date = new Date(dateString);
+		return date.toISOString().split("T")[0];
+	} catch (_error) {
+		return "";
+	}
+};
 
 export default function ClientesPage() {
 	const router = useRouter();
@@ -126,6 +151,7 @@ export default function ClientesPage() {
 		endereco: "",
 		status: "em análise",
 		produto: "",
+		dataFimContrato: "",
 	});
 	const [editandoLoading, setEditandoLoading] = useState(false);
 	const [adicionandoLoading, setAdicionandoLoading] = useState(false);
@@ -136,6 +162,12 @@ export default function ClientesPage() {
 		useState<string>("");
 	const [responsavelNome, setResponsavelNome] = useState<string>("");
 
+	// Estados para observações
+	const [observacoes, setObservacoes] = useState<Observacao[]>([]);
+	const [novaObservacao, setNovaObservacao] = useState<string>("");
+	const [carregandoObservacoes, setCarregandoObservacoes] = useState(false);
+	const [adicionandoObservacao, setAdicionandoObservacao] = useState(false);
+
 	useEffect(() => {
 		checkAuth();
 	}, []);
@@ -143,6 +175,8 @@ export default function ClientesPage() {
 	useEffect(() => {
 		if (selectedCliente) {
 			buscarResponsavelNome(selectedCliente.profileId);
+			// Carregar observações quando abrir modal de detalhes
+			carregarObservacoes(selectedCliente.id);
 		}
 	}, [selectedCliente]);
 
@@ -169,6 +203,86 @@ export default function ClientesPage() {
 			}, 1000);
 		}
 	}, [profile]);
+
+	// Função para carregar observações com dados do perfil
+	const carregarObservacoes = async (clienteId: string) => {
+		if (!clienteId || !profile) {
+			return;
+		}
+
+		setCarregandoObservacoes(true);
+		try {
+			// Query com JOIN para pegar dados do perfil
+			const { data, error } = await supabase
+				.from("observacoes_cliente")
+				.select(`
+					*,
+					profiles:profile_id (id, name, email, role)
+				`)
+				.eq("cliente_id", clienteId)
+				.order("created_at", { ascending: false });
+
+			if (error) {
+				throw error;
+			}
+
+			// Transformar dados
+			const observacoesComPerfil =
+				data?.map((obs: any) => ({
+					id: obs.id,
+					cliente_id: obs.cliente_id,
+					profile_id: obs.profile_id,
+					observacao: obs.observacao,
+					created_at: obs.created_at,
+					// Informações do perfil que fez a observação
+					profile_nome: obs.profiles?.name || "Usuário",
+					profile_email: obs.profiles?.email || "",
+					profile_role: obs.profiles?.role || "desconhecido",
+				})) || [];
+
+			setObservacoes(observacoesComPerfil);
+		} catch (error) {
+			console.error("Erro ao carregar observações:", error);
+		} finally {
+			setCarregandoObservacoes(false);
+		}
+	};
+
+	// Função para adicionar nova observação
+	const adicionarObservacao = async (
+		clienteId: string,
+		observacao: string,
+	) => {
+		if (!observacao.trim() || !profile) {
+			return;
+		}
+
+		setAdicionandoObservacao(true);
+		try {
+			const { error } = await supabase
+				.from("observacoes_cliente")
+				.insert({
+					cliente_id: clienteId,
+					profile_id: profile.id,
+					observacao: observacao.trim(),
+				});
+
+			if (error) {
+				throw error;
+			}
+
+			// Recarregar observações
+			await carregarObservacoes(clienteId);
+			setNovaObservacao("");
+			return true;
+		} catch (error) {
+			console.error("Erro ao adicionar observação:", error);
+			alert("Erro ao adicionar observação");
+			return false;
+		} finally {
+			setAdicionandoObservacao(false);
+		}
+	};
 
 	const testarConexaoParceiros = async () => {
 		if (!profile) {
@@ -565,7 +679,8 @@ export default function ClientesPage() {
 					cliente.telefone?.includes(term) ||
 					cliente.nif?.includes(term) ||
 					cliente.status?.toLowerCase().includes(term) ||
-					cliente.produto?.toLowerCase().includes(term),
+					cliente.produto?.toLowerCase().includes(term) ||
+					cliente.codigoPostal?.includes(term),
 			);
 		}
 
@@ -602,6 +717,21 @@ export default function ClientesPage() {
 					return sortConfig.direction === "asc" ? -1 : 1;
 				}
 
+				// Tratamento especial para datas
+				if (sortConfig.key === "dataFimContrato") {
+					const aDate = aVal ? new Date(aVal as string).getTime() : 0;
+					const bDate = bVal ? new Date(bVal as string).getTime() : 0;
+
+					if (aDate < bDate) {
+						return sortConfig.direction === "asc" ? -1 : 1;
+					}
+					if (aDate > bDate) {
+						return sortConfig.direction === "asc" ? 1 : -1;
+					}
+					return 0;
+				}
+
+				// Para outros campos (incluindo nome)
 				const aStr = String(aVal).toLowerCase();
 				const bStr = String(bVal).toLowerCase();
 
@@ -626,7 +756,7 @@ export default function ClientesPage() {
 		sortConfig,
 	]);
 
-	const _handleSort = (key: keyof Cliente) => {
+	const handleSort = (key: keyof Cliente) => {
 		setSortConfig((current) => {
 			if (current?.key === key) {
 				return {
@@ -636,6 +766,13 @@ export default function ClientesPage() {
 			}
 			return { key, direction: "asc" };
 		});
+	};
+
+	const getSortIndicator = (key: keyof Cliente) => {
+		if (!sortConfig || sortConfig.key !== key) {
+			return null;
+		}
+		return sortConfig.direction === "asc" ? " ↑" : " ↓";
 	};
 
 	const handleNavigation = (path: string) => {
@@ -686,7 +823,11 @@ export default function ClientesPage() {
 	};
 
 	const handleEditar = async (cliente: Cliente) => {
-		setClienteEditando({ ...cliente });
+		setClienteEditando({
+			...cliente,
+			// Garantir que dataFimContrato seja formatado para input type="date"
+			dataFimContrato: formatDateForInput(cliente.dataFimContrato),
+		});
 
 		// Se o gestor está editando, carregar parceiros
 		if (profile?.role === "gestor") {
@@ -713,6 +854,7 @@ export default function ClientesPage() {
 			endereco: "",
 			status: "em análise",
 			produto: "",
+			dataFimContrato: "",
 		});
 		setParceiroSelecionado("");
 		setModalAdicionarOpen(true);
@@ -737,6 +879,8 @@ export default function ClientesPage() {
 				status: clienteEditando.status,
 				produto: clienteEditando.produto,
 				updatedAt: new Date().toISOString(),
+				// ← ADICIONADO AQUI:
+				dataFimContrato: clienteEditando.dataFimContrato || null,
 			};
 
 			// Se for gestor e estiver editando um cliente dele, permitir alterar o responsavelId
@@ -816,6 +960,8 @@ export default function ClientesPage() {
 				produto: novoCliente.produto,
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
+				// ← ADICIONADO AQUI:
+				dataFimContrato: novoCliente.dataFimContrato || null,
 			};
 
 			// LÓGICA BASEADA NA ROLE DO USUÁRIO
@@ -880,6 +1026,11 @@ export default function ClientesPage() {
 				throw error;
 			}
 
+			// Se houver observação, adiciona
+			if (novaObservacao.trim()) {
+				await adicionarObservacao(dadosCliente.id, novaObservacao);
+			}
+
 			// RECARREGA E LIMPA
 			await loadClientes(profile.role, profile.id);
 			setModalAdicionarOpen(false);
@@ -892,8 +1043,10 @@ export default function ClientesPage() {
 				endereco: "",
 				status: "em análise",
 				produto: "",
+				dataFimContrato: "",
 			});
 			setParceiroSelecionado("");
+			setNovaObservacao("");
 			alert("Cliente criado com sucesso!");
 		} catch (err: any) {
 			console.error("Erro ao criar cliente:", err);
@@ -936,6 +1089,8 @@ export default function ClientesPage() {
 		setModalDetalhesOpen(false);
 		setSelectedCliente(null);
 		setResponsavelNome("");
+		setObservacoes([]);
+		setNovaObservacao("");
 	};
 
 	const closeModalEditar = () => {
@@ -955,8 +1110,10 @@ export default function ClientesPage() {
 			endereco: "",
 			status: "em análise",
 			produto: "",
+			dataFimContrato: "",
 		});
 		setParceiroSelecionado("");
+		setNovaObservacao("");
 	};
 
 	useEffect(() => {
@@ -1258,7 +1415,7 @@ export default function ClientesPage() {
 									<input
 										id="search-input"
 										type="text"
-										placeholder="Buscar cliente (nome, email, telefone, NIF...)"
+										placeholder="Buscar cliente (nome, email, telefone, NIF, código postal...)"
 										value={searchTerm}
 										onChange={(e) =>
 											setSearchTerm(e.target.value)
@@ -1421,8 +1578,11 @@ export default function ClientesPage() {
 							<table className="min-w-full divide-y divide-gray-200">
 								<thead className="bg-gray-50">
 									<tr>
-										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-											Nome
+										<th
+											className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+											onClick={() => handleSort("name")}
+										>
+											Nome{getSortIndicator("name")}
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
 											Email
@@ -1440,7 +1600,18 @@ export default function ClientesPage() {
 											Produto
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+											Código Postal
+										</th>
+										<th
+											className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+											onClick={() =>
+												handleSort("dataFimContrato")
+											}
+										>
 											Data Fim Contrato
+											{getSortIndicator(
+												"dataFimContrato",
+											)}
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
 											Parceiro
@@ -1457,7 +1628,7 @@ export default function ClientesPage() {
 									{paginatedClientes.length === 0 ? (
 										<tr>
 											<td
-												colSpan={10}
+												colSpan={11}
 												className="px-6 py-12 text-center text-gray-500"
 											>
 												<div className="flex flex-col items-center justify-center">
@@ -1514,40 +1685,21 @@ export default function ClientesPage() {
 												</td>
 												<td className="px-6 py-4 whitespace-nowrap">
 													<div className="text-gray-600">
+														{cliente.codigoPostal ||
+															"-"}
+													</div>
+												</td>
+												<td className="px-6 py-4 whitespace-nowrap">
+													<div className="text-gray-600">
 														{formatarDataFimContrato(
 															cliente.dataFimContrato,
 														)}
 													</div>
 												</td>
 												<td className="px-6 py-4 whitespace-nowrap">
-													<div className="flex items-center gap-2">
-														<div>
-															<div className="font-medium">
-																{cliente.parceiroNome ||
-																	"-"}
-															</div>
-															{cliente.parceiroRole && (
-																<div className="flex items-center gap-1 mt-1">
-																	<span
-																		className={`text-xs px-1.5 py-0.5 rounded capitalize ${
-																			cliente.parceiroRole ===
-																			"parceiro"
-																				? "bg-green-100 text-green-800"
-																				: "bg-gray-100 text-gray-800"
-																		}`}
-																	>
-																		{
-																			cliente.parceiroRole
-																		}
-																	</span>
-																	{cliente.foiAtribuido && (
-																		<span className="text-xs bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">
-																			atribuído
-																		</span>
-																	)}
-																</div>
-															)}
-														</div>
+													<div className="font-medium">
+														{cliente.parceiroNome ||
+															"-"}
 													</div>
 												</td>
 												<td className="px-6 py-4 whitespace-nowrap">
@@ -2074,6 +2226,48 @@ export default function ClientesPage() {
 														</div>
 													</div>
 												</div>
+
+												{/* Campo para observação inicial */}
+												<div className="bg-gray-50 p-4 rounded-xl">
+													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+														<FileText className="w-5 h-5 text-gray-600" />
+														Observação Inicial
+														(Opcional)
+													</h3>
+													<div className="space-y-4">
+														<div>
+															<label
+																htmlFor="nova-observacao"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																Adicionar uma
+																observação sobre
+																este cliente
+															</label>
+															<textarea
+																id="nova-observacao"
+																value={
+																	novaObservacao
+																}
+																onChange={(e) =>
+																	setNovaObservacao(
+																		e.target
+																			.value,
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[100px]"
+																placeholder="Digite uma observação sobre o cliente..."
+																rows={3}
+															/>
+															<p className="text-xs text-gray-500 mt-1">
+																Esta observação
+																será registrada
+																com seu nome e
+																data
+															</p>
+														</div>
+													</div>
+												</div>
 											</div>
 
 											<div className="space-y-6">
@@ -2253,6 +2447,44 @@ export default function ClientesPage() {
 																)}
 															</select>
 														</div>
+														<div>
+															<label
+																htmlFor="novo-data-fim-contrato"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																<Calendar className="w-4 h-4 inline mr-1" />
+																Data Fim
+																Contrato
+																(Opcional)
+															</label>
+															<input
+																id="novo-data-fim-contrato"
+																type="date"
+																value={
+																	novoCliente.dataFimContrato ||
+																	""
+																}
+																onChange={(e) =>
+																	setNovoCliente(
+																		{
+																			...novoCliente,
+																			// CORREÇÃO DO ERRO AQUI
+																			dataFimContrato:
+																				e
+																					.target
+																					.value,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+															/>
+															<p className="text-xs text-gray-500 mt-1">
+																Use o calendário
+																para selecionar
+																a data. Formato:
+																AAAA-MM-DD
+															</p>
+														</div>
 													</div>
 												</div>
 											</div>
@@ -2272,6 +2504,17 @@ export default function ClientesPage() {
 														{new Date().toLocaleDateString(
 															"pt-PT",
 														)}
+													</p>
+												</div>
+												<div className="bg-white p-4 rounded-lg border">
+													<p className="text-sm text-gray-500">
+														Criado por
+													</p>
+													<p className="font-medium">
+														{profile?.name}
+													</p>
+													<p className="text-xs text-gray-400 mt-1">
+														{profile?.role}
 													</p>
 												</div>
 											</div>
@@ -2540,6 +2783,159 @@ export default function ClientesPage() {
 										</div>
 									</div>
 
+									{/* SEÇÃO DE OBSERVAÇÕES */}
+									<div className="mt-8">
+										<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+											<FileText className="w-5 h-5 text-gray-600" />
+											Observações do Cliente
+										</h3>
+
+										{/* Mostrar campo para adicionar observação APENAS para tenant e gestor */}
+										{profile?.role !== "parceiro" && (
+											<div className="mb-6">
+												<div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+													<label
+														htmlFor="nova-observacao-detalhes"
+														className="block text-sm font-medium text-blue-800 mb-2"
+													>
+														Adicionar Nova
+														Observação
+													</label>
+													<textarea
+														id="nova-observacao-detalhes"
+														value={novaObservacao}
+														onChange={(e) =>
+															setNovaObservacao(
+																e.target.value,
+															)
+														}
+														className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[80px]"
+														placeholder="Digite sua observação aqui..."
+														rows={3}
+													/>
+													<div className="flex justify-between items-center mt-3">
+														<p className="text-xs text-blue-600">
+															Esta observação será
+															registrada com seu
+															nome e data
+														</p>
+														<button
+															type="button"
+															onClick={() => {
+																if (
+																	selectedCliente &&
+																	novaObservacao.trim()
+																) {
+																	adicionarObservacao(
+																		selectedCliente.id,
+																		novaObservacao,
+																	);
+																}
+															}}
+															disabled={
+																!novaObservacao.trim() ||
+																adicionandoObservacao
+															}
+															className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+														>
+															{adicionandoObservacao ? (
+																<>
+																	<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+																	Adicionando...
+																</>
+															) : (
+																<>
+																	<Plus
+																		size={
+																			16
+																		}
+																	/>
+																	Adicionar
+																	Observação
+																</>
+															)}
+														</button>
+													</div>
+												</div>
+											</div>
+										)}
+
+										{carregandoObservacoes ? (
+											<div className="flex items-center justify-center py-8">
+												<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+											</div>
+										) : observacoes.length > 0 ? (
+											<div className="space-y-4 max-h-80 overflow-y-auto pr-2">
+												{observacoes.map((obs) => (
+													<div
+														key={obs.id}
+														className="bg-white p-4 rounded-lg border border-gray-200"
+													>
+														{/* CABEÇALHO COM INFO DO AUTOR */}
+														<div className="flex justify-between items-start mb-3">
+															<div className="flex items-center gap-2">
+																<div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+																	<UserIcon className="w-4 h-4 text-blue-600" />
+																</div>
+																<div>
+																	<p className="font-medium text-gray-800">
+																		{
+																			obs.profile_nome
+																		}
+																	</p>
+																	<p className="text-xs text-gray-500 capitalize">
+																		{
+																			obs.profile_role
+																		}
+																	</p>
+																</div>
+															</div>
+															<span className="text-xs text-gray-500">
+																{new Date(
+																	obs.created_at,
+																).toLocaleDateString(
+																	"pt-PT",
+																)}
+																<br />
+																{new Date(
+																	obs.created_at,
+																).toLocaleTimeString(
+																	"pt-PT",
+																	{
+																		hour: "2-digit",
+																		minute: "2-digit",
+																	},
+																)}
+															</span>
+														</div>
+
+														{/* OBSERVAÇÃO EM SI */}
+														<div className="bg-gray-50 p-3 rounded">
+															<p className="text-gray-700 whitespace-pre-wrap">
+																{obs.observacao}
+															</p>
+														</div>
+													</div>
+												))}
+											</div>
+										) : (
+											<div className="bg-gray-50 p-8 rounded-xl border border-gray-200 text-center">
+												<div className="text-gray-400 mb-2">
+													<FileText className="w-12 h-12 mx-auto" />
+												</div>
+												<p className="text-lg font-medium text-gray-700">
+													Nenhuma observação
+													registrada
+												</p>
+												<p className="text-gray-500 mt-1">
+													Seja o primeiro a adicionar
+													uma observação sobre este
+													cliente
+												</p>
+											</div>
+										)}
+									</div>
+
 									<div className="mt-8 bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
 										<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 											<Calendar className="w-5 h-5 text-gray-600" />
@@ -2609,40 +3005,58 @@ export default function ClientesPage() {
 												).getTime()) /
 												(1000 * 60 * 60 * 24),
 										)}{" "}
-										dias
+										dias • {observacoes.length} observações
 									</div>
 									<div className="flex items-center gap-3">
-										<button
-											type="button"
-											onClick={() => {
-												handleEditar(selectedCliente);
-												closeModalDetalhes();
-											}}
-											className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-										>
-											<Edit size={16} />
-											Editar Cliente
-										</button>
-										<button
-											type="button"
-											onClick={() => {
-												if (
-													confirm(
-														`Tem certeza que deseja excluir ${selectedCliente.name}?`,
-													)
-												) {
-													handleDeletar(
-														selectedCliente.id,
-														selectedCliente.name,
-													);
-													closeModalDetalhes();
-												}
-											}}
-											className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors flex items-center gap-2"
-										>
-											<Trash2 size={16} />
-											Excluir
-										</button>
+										{/* Mostrar botões de editar e excluir APENAS para tenant e gestor */}
+										{profile?.role !== "parceiro" && (
+											<>
+												<button
+													type="button"
+													onClick={() => {
+														handleEditar(
+															selectedCliente,
+														);
+														closeModalDetalhes();
+													}}
+													className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+												>
+													<Edit size={16} />
+													Editar Cliente
+												</button>
+												<button
+													type="button"
+													onClick={() => {
+														if (
+															confirm(
+																`Tem certeza que deseja excluir ${selectedCliente.name}?`,
+															)
+														) {
+															handleDeletar(
+																selectedCliente.id,
+																selectedCliente.name,
+															);
+															closeModalDetalhes();
+														}
+													}}
+													className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors flex items-center gap-2"
+												>
+													<Trash2 size={16} />
+													Excluir
+												</button>
+											</>
+										)}
+										{/* Parceiro vê apenas o botão de fechar */}
+										{profile?.role === "parceiro" && (
+											<button
+												type="button"
+												onClick={closeModalDetalhes}
+												className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors flex items-center gap-2"
+											>
+												<X size={16} />
+												Fechar
+											</button>
+										)}
 									</div>
 								</div>
 							</div>
@@ -2827,6 +3241,57 @@ export default function ClientesPage() {
 														</div>
 													</div>
 												</div>
+
+												{/* Campo para adicionar observação durante edição - APENAS para tenant e gestor */}
+												{profile?.role !==
+													"parceiro" && (
+													<div className="bg-gray-50 p-4 rounded-xl">
+														<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+															<FileText className="w-5 h-5 text-gray-600" />
+															Adicionar Observação
+															(Opcional)
+														</h3>
+														<div className="space-y-4">
+															<div>
+																<label
+																	htmlFor="observacao-edicao"
+																	className="block text-sm font-medium text-gray-700 mb-1"
+																>
+																	Nova
+																	observação
+																	sobre
+																	alterações
+																</label>
+																<textarea
+																	id="observacao-edicao"
+																	value={
+																		novaObservacao
+																	}
+																	onChange={(
+																		e,
+																	) =>
+																		setNovaObservacao(
+																			e
+																				.target
+																				.value,
+																		)
+																	}
+																	className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[100px]"
+																	placeholder="Descreva as alterações feitas ou adicione uma observação..."
+																	rows={3}
+																/>
+																<p className="text-xs text-gray-500 mt-1">
+																	Esta
+																	observação
+																	será
+																	registrada
+																	junto com as
+																	alterações
+																</p>
+															</div>
+														</div>
+													</div>
+												)}
 											</div>
 
 											<div className="space-y-6">
@@ -3007,6 +3472,45 @@ export default function ClientesPage() {
 																)}
 															</select>
 														</div>
+														<div>
+															<label
+																htmlFor="edit-data-fim-contrato"
+																className="block text-sm font-medium text-gray-700 mb-1"
+															>
+																<Calendar className="w-4 h-4 inline mr-1" />
+																Data Fim
+																Contrato
+															</label>
+															<input
+																id="edit-data-fim-contrato"
+																type="date"
+																value={
+																	formatDateForInput(
+																		clienteEditando?.dataFimContrato,
+																	) || ""
+																}
+																onChange={(e) =>
+																	setClienteEditando(
+																		{
+																			...clienteEditando,
+																			// CORREÇÃO DO ERRO AQUI
+																			dataFimContrato:
+																				e
+																					.target
+																					.value ||
+																				null,
+																		},
+																	)
+																}
+																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+															/>
+															<p className="text-xs text-gray-500 mt-1">
+																Deixe em branco
+																para remover a
+																data. Formato:
+																AAAA-MM-DD
+															</p>
+														</div>
 													</div>
 												</div>
 											</div>
@@ -3165,7 +3669,20 @@ export default function ClientesPage() {
 										</button>
 										<button
 											type="button"
-											onClick={handleSalvarEdicao}
+											onClick={async () => {
+												// Se houver observação, adiciona antes de salvar (apenas para tenant e gestor)
+												if (
+													novaObservacao.trim() &&
+													profile?.role !== "parceiro"
+												) {
+													await adicionarObservacao(
+														clienteEditando.id,
+														novaObservacao,
+													);
+												}
+												// Depois salva as alterações do cliente
+												await handleSalvarEdicao();
+											}}
 											disabled={editandoLoading}
 											className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
 										>

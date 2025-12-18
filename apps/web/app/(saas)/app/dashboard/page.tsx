@@ -627,27 +627,33 @@ export default function DashboardPage() {
 								)}
 							</h2>
 
-							{/* Botão para mostrar todos os dados */}
-							<div className="flex items-center gap-3">
-								<button
-									type="button"
-									onClick={toggleShowAllData}
-									className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-										showAllData
-											? "bg-green-600 text-white hover:bg-green-700"
-											: "bg-gray-200 text-gray-700 hover:bg-gray-300"
-									}`}
-								>
-									<span className="text-sm font-medium">
-										{showAllData
-											? "Todos Ativo"
-											: "Mostrar Todos"}
-									</span>
-								</button>
+							{/* Container para botão "Mostrar Todos" e filtros */}
+							<div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+								{/* Botão para mostrar todos os dados */}
+								<div className="w-full md:w-auto">
+									<div className="text-sm font-medium text-gray-700 mb-1">
+										Visualização
+									</div>
+									<button
+										type="button"
+										onClick={toggleShowAllData}
+										className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 w-full md:w-auto justify-center ${
+											showAllData
+												? "bg-green-600 text-white hover:bg-green-700"
+												: "bg-gray-200 text-gray-700 hover:bg-gray-300"
+										}`}
+									>
+										<span className="text-sm font-medium">
+											{showAllData
+												? "Todos Ativo"
+												: "Mostrar Todos"}
+										</span>
+									</button>
+								</div>
 
 								{/* Filtro de Mês/Ano - desabilitado quando "Todos" está ativo */}
-								<div className="flex items-center gap-3">
-									<div>
+								<div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
+									<div className="w-full sm:w-auto">
 										<label
 											htmlFor="month-filter"
 											className="block text-sm font-medium text-gray-700 mb-1"
@@ -679,7 +685,7 @@ export default function DashboardPage() {
 										</select>
 									</div>
 
-									<div>
+									<div className="w-full sm:w-auto">
 										<label
 											htmlFor="year-filter"
 											className="block text-sm font-medium text-gray-700 mb-1"
