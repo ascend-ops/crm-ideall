@@ -1,6 +1,12 @@
 "use client";
 
-import { ChevronRight, LayoutDashboard, Menu, Users } from "lucide-react";
+import {
+	ChevronRight,
+	LayoutDashboard,
+	Menu,
+	TrendingUp,
+	Users,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -473,7 +479,7 @@ export default function DashboardPage() {
 
 						{expanded && (
 							<h2 className="ml-3 font-bold text-lg text-gray-800 truncate">
-								LeadFlow
+								Menu Principal
 							</h2>
 						)}
 					</div>
@@ -519,6 +525,29 @@ export default function DashboardPage() {
 							{expanded && (
 								<span className="ml-3 font-medium truncate">
 									Clientes
+								</span>
+							)}
+							{expanded && (
+								<ChevronRight className="w-4 h-4 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+							)}
+						</button>
+
+						{/* Gráfico de Aprovados */}
+						<button
+							type="button"
+							onClick={() => handleNavigation("/app/aprovados")}
+							onKeyDown={(e) =>
+								handleKeyDown(e, () =>
+									handleNavigation("/app/aprovados"),
+								)
+							}
+							className="flex items-center w-full p-3 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-colors group"
+							aria-label="Ir para o Gráfico de Aprovados"
+						>
+							<TrendingUp className="w-5 h-5 shrink-0" />
+							{expanded && (
+								<span className="ml-3 font-medium truncate">
+									Aprovados
 								</span>
 							)}
 							{expanded && (

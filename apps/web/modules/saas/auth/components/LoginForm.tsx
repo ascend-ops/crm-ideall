@@ -13,7 +13,6 @@ import {
 } from "@ui/components/form";
 import { Input } from "@ui/components/input";
 import { AlertTriangleIcon, EyeIcon, EyeOffIcon } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -181,30 +180,9 @@ export function LoginForm() {
 						)}
 					/>
 
-					<div className="flex justify-between items-center">
-						<Link
-							href="/auth/forgot-password"
-							className="text-sm text-blue-600 hover:underline"
-						>
-							Esqueceu a senha?
-						</Link>
-					</div>
-
 					<Button type="submit" className="w-full" disabled={loading}>
 						{loading ? "Entrando..." : "Entrar"}
 					</Button>
-
-					<div className="text-center text-sm">
-						<span className="text-gray-600">
-							Não tem uma conta?{" "}
-						</span>
-						<Link
-							href="/auth/signup"
-							className="text-blue-600 hover:underline"
-						>
-							Cadastre-se
-						</Link>
-					</div>
 				</form>
 			</Form>
 		</div>
