@@ -1,0 +1,282 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "./generated"
+  engineType = "client"
+}
+
+generator zod {
+  provider = "prisma-zod-generator"
+  output   = "./zod"
+  config   = "./zod-generator.config.json"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String       @id @default(cuid())
+  name               String
+  email              String       @unique
+  emailVerified      Boolean
+  image              String?
+  createdAt          DateTime
+  updatedAt          DateTime
+  username           String?      @unique
+  role               String?
+  banned             Boolean?
+  banReason          String?
+  banExpires         DateTime?
+  onboardingComplete Boolean      @default(false)
+  paymentsCustomerId String?
+  locale             String?
+  twoFactorEnabled   Boolean?
+  accounts           Account[]
+  aiChats            AiChat[]
+  invitations        Invitation[]
+  members            Member[]
+  passkeys           Passkey[]
+  purchases          Purchase[]
+  sessions           Session[]
+  twofactors         TwoFactor[]
+
+  @@map("user")
+}
+
+model Session {
+  id                   String   @id @default(cuid())
+  expiresAt            DateTime
+  ipAddress            String?
+  userAgent            String?
+  userId               String
+  impersonatedBy       String?
+  activeOrganizationId String?
+  token                String   @unique
+  createdAt            DateTime
+  updatedAt            DateTime
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  expiresAt             DateTime?
+  password              String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  createdAt             DateTime
+  updatedAt             DateTime
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  @@map("verification")
+}
+
+model Passkey {
+  id           String    @id @default(cuid())
+  name         String?
+  publicKey    String
+  userId       String
+  credentialID String
+  counter      Int
+  deviceType   String
+  backedUp     Boolean
+  transports   String?
+  createdAt    DateTime?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("passkey")
+}
+
+model TwoFactor {
+  id          String @id @default(cuid())
+  secret      String
+  backupCodes String
+  userId      String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("twofactor")
+}
+
+model Organization {
+  id                 String       @id @default(cuid())
+  name               String
+  slug               String?      @unique
+  logo               String?
+  createdAt          DateTime
+  metadata           String?
+  paymentsCustomerId String?
+  aiChats            AiChat[]
+  invitations        Invitation[]
+  members            Member[]
+  purchases          Purchase[]
+
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  role           String
+  createdAt      DateTime
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id @default(cuid())
+  organizationId String
+  email          String
+  role           String?
+  status         String
+  expiresAt      DateTime
+  inviterId      String
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("invitation")
+}
+
+model Purchase {
+  id             String        @id @default(cuid())
+  organizationId String?
+  userId         String?
+  type           PurchaseType
+  customerId     String
+  subscriptionId String?       @unique
+  productId      String
+  status         String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@map("purchase")
+}
+
+model AiChat {
+  id             String        @id @default(cuid())
+  organizationId String?
+  userId         String?
+  title          String?
+  messages       Json          @default("[]")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ai_chat")
+}
+
+model Tenant {
+  id        String    @id @default(cuid()) @db.Uuid
+  name      String
+  email     String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  profiles  Profile[]
+
+  @@map("tenants")
+}
+
+model Profile {
+  id                                                      String                @id @default(cuid()) @db.Uuid
+  tenantId                                                String                @db.Uuid
+  name                                                    String
+  email                                                   String
+  role                                                    String
+  createdAt                                               DateTime              @default(now())
+  updatedAt                                               DateTime              @updatedAt
+  clientes                                                Cliente[]
+  gestor_parceiros_gestor_parceiros_gestor_idToprofiles   gestor_parceiros[]    @relation("gestor_parceiros_gestor_idToprofiles")
+  gestor_parceiros_gestor_parceiros_parceiro_idToprofiles gestor_parceiros[]    @relation("gestor_parceiros_parceiro_idToprofiles")
+  observacoes_cliente                                     observacoes_cliente[]
+  tenant                                                  Tenant                @relation(fields: [tenantId], references: [id], onUpdate: NoAction)
+
+  @@map("profiles")
+}
+
+model Cliente {
+  id                  String                @id @default(cuid())
+  profileId           String?               @db.Uuid
+  name                String
+  email               String?
+  codigoPostal        String?
+  endereco            String?
+  telefone            String?
+  nif                 String?
+  status              String
+  produto             String
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  tenantId            String?               @db.Uuid
+  dataFimContrato     DateTime?             @db.Date
+  responsavelId       String?               @db.Uuid
+  cliente_profiles    cliente_profiles[]
+  profiles            Profile?              @relation(fields: [responsavelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  observacoes_cliente observacoes_cliente[]
+
+  @@map("clientes")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model cliente_profiles {
+  id         String    @id @default(dbgenerated("gen_random_uuid()"))
+  cliente_id String
+  profile_id String    @db.Uuid
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  clientes   Cliente   @relation(fields: [cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([cliente_id, profile_id])
+}
+
+model gestor_parceiros {
+  id                                              String    @id @default(dbgenerated("gen_random_uuid()"))
+  created_at                                      DateTime? @default(now()) @db.Timestamptz(6)
+  gestor_id                                       String?   @db.Uuid
+  parceiro_id                                     String?   @db.Uuid
+  profiles_gestor_parceiros_gestor_idToprofiles   Profile?  @relation("gestor_parceiros_gestor_idToprofiles", fields: [gestor_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles_gestor_parceiros_parceiro_idToprofiles Profile?  @relation("gestor_parceiros_parceiro_idToprofiles", fields: [parceiro_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model observacoes_cliente {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id String
+  profile_id String    @db.Uuid
+  observacao String
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  clientes   Cliente   @relation(fields: [cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_cliente")
+  profiles   Profile   @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_profile")
+
+  @@index([cliente_id], map: "idx_observacoes_cliente_id")
+  @@index([created_at(sort: Desc)], map: "idx_observacoes_created_at")
+}
+
+enum PurchaseType {
+  SUBSCRIPTION
+  ONE_TIME
+}

@@ -120,3 +120,7 @@ export const getOrganizationList = cache(async () => {
 	// Retorna array vazio por enquanto
 	return [];
 });
+
+export const getUserPasskeys = cache(async () => {
+  return [];
+});
