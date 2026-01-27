@@ -60,8 +60,8 @@ export function OrganzationSelect({ className }: { className?: string }) {
 							<>
 								<UserAvatar
 									className="hidden size-6 sm:block"
-									name={user.name ?? ""}
-									avatarUrl={user.image}
+									name={(user.user_metadata?.name as string) ?? ""}
+									avatarUrl={user.user_metadata?.avatar_url as string | undefined}
 								/>
 								<span className="block truncate">
 									{t(
@@ -101,10 +101,10 @@ export function OrganzationSelect({ className }: { className?: string }) {
 									<div className="flex flex-1 items-center justify-start gap-2">
 										<UserAvatar
 											className="size-8"
-											name={user.name ?? ""}
-											avatarUrl={user.image}
+											name={(user.user_metadata?.name as string) ?? ""}
+											avatarUrl={user.user_metadata?.avatar_url as string | undefined}
 										/>
-										{user.name}
+										{user.user_metadata?.name as string}
 									</div>
 								</DropdownMenuRadioItem>
 							</DropdownMenuRadioGroup>

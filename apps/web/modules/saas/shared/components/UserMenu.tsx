@@ -74,7 +74,9 @@ export function UserMenu({ showUserName }: { showUserName?: boolean }) {
 		return null;
 	}
 
-	const { name, email, image } = user;
+	const name = user.user_metadata?.name as string | undefined;
+	const email = user.email;
+	const image = user.user_metadata?.avatar_url as string | undefined;
 
 	return (
 		<DropdownMenu modal={false}>

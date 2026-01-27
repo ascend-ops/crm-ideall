@@ -21,15 +21,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 		<SessionContext.Provider
 			value={{
 				loaded,
-				session: session?.session ?? null,
+				session: session ?? null,
 				user: session?.user ?? null,
 				reloadSession: async () => {
 					const { data: newSession, error } =
-						await authClient.getSession({
-							query: {
-								disableCookieCache: true,
-							},
-						});
+						await authClient.getSession();
 
 					if (error) {
 						throw new Error(

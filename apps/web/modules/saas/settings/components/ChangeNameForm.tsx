@@ -24,7 +24,7 @@ export function ChangeNameForm() {
 	const form = useForm<FormSchema>({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
-			name: user?.name ?? "",
+			name: (user?.user_metadata?.name as string) ?? "",
 		},
 	});
 

@@ -26,8 +26,8 @@ export default async function SettingsLayout({ children }: PropsWithChildren) {
 			title: t("settings.menu.account.title"),
 			avatar: (
 				<UserAvatar
-					name={session.user.name ?? ""}
-					avatarUrl={session.user.image}
+					name={session.user?.user_metadata?.name ?? session.user?.email ?? ""}
+					avatarUrl={session.user?.user_metadata?.avatar_url}
 				/>
 			),
 			items: [

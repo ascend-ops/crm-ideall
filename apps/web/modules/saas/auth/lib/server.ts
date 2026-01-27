@@ -110,17 +110,51 @@ export const getInvitation = cache(async (id: string) => {
 	}
 });
 
-export const getActiveOrganization = cache(async () => {
+type OrganizationMember = {
+	id: string;
+	organizationId: string;
+	role: "admin" | "member" | "owner";
+	createdAt: Date;
+	userId: string;
+	user: { email: string; name: string; image?: string };
+};
+
+type OrganizationInvitation = {
+	id: string;
+	email: string;
+	role: "admin" | "member" | "owner";
+	organizationId: string;
+	status: "pending" | "accepted" | "rejected";
+	inviterId: string;
+	expiresAt: Date;
+};
+
+type Organization = {
+	id: string;
+	name: string;
+	slug: string;
+	createdAt: Date;
+	logo?: string | null;
+	metadata?: unknown;
+	members: OrganizationMember[];
+	invitations: OrganizationInvitation[];
+};
+
+export const getActiveOrganization = cache(async (slug?: string): Promise<Organization | null> => {
 	// Retorna null por enquanto - você pode implementar depois
-	console.log("⚠️ getActiveOrganization chamada (retornando null)");
+	console.log("⚠️ getActiveOrganization chamada (retornando null)", slug);
 	return null;
 });
 
-export const getOrganizationList = cache(async () => {
+export const getOrganizationList = cache(async (): Promise<{ id: string; name: string; slug: string }[]> => {
 	// Retorna array vazio por enquanto
 	return [];
 });
 
-export const getUserPasskeys = cache(async () => {
-  return [];
+export const getUserPasskeys = cache(async (): Promise<{ id: string }[]> => {
+	return [];
+});
+
+export const getUserAccounts = cache(async (): Promise<{ id: string; providerId: string }[]> => {
+	return [];
 });

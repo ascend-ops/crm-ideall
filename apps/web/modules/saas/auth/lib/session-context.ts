@@ -1,10 +1,10 @@
-import type { Session } from "@repo/auth";
+import type { Session as SupabaseSession, User as SupabaseUser } from "@supabase/supabase-js";
 import React from "react";
 
 export const SessionContext = React.createContext<
 	| {
-			session: Session["session"] | null;
-			user: Session["user"] | null;
+			session: SupabaseSession | null;
+			user: SupabaseUser | null;
 			loaded: boolean;
 			reloadSession: () => Promise<void>;
 	  }
