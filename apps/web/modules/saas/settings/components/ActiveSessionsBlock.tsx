@@ -79,7 +79,7 @@ export function ActiveSessionsBlock() {
 								<ComputerIcon className="size-6 shrink-0 text-primary/50" />
 								<div>
 									<strong className="block text-sm">
-										{session.id === currentSession?.id
+										{session.token === currentSession?.access_token
 											? t(
 													"settings.account.security.activeSessions.currentSession",
 												)

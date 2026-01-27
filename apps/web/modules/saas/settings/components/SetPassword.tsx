@@ -13,7 +13,7 @@ export function SetPasswordForm() {
 	const [submitting, setSubmitting] = useState(false);
 
 	const onSubmit = async () => {
-		if (!user) {
+		if (!user || !user.email) {
 			return;
 		}
 

@@ -71,8 +71,10 @@ export function TwoFactorBlock() {
 				throw error;
 			}
 
-			setTotpURI(data.totpURI);
-			setDialogView("totp-url");
+			if (data && data.totpURI) {
+				setTotpURI(data.totpURI);
+				setDialogView("totp-url");
+			}
 		},
 
 		onError: () => {
@@ -140,7 +142,7 @@ export function TwoFactorBlock() {
 	const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
 
-		if (user?.twoFactorEnabled) {
+		if (user?.user_metadata?.twoFactorEnabled) {
 			disableTwoFactorMutation.mutate();
 			return;
 		}
@@ -162,7 +164,7 @@ export function TwoFactorBlock() {
 			title={t("settings.account.security.twoFactor.title")}
 			description={t("settings.account.security.twoFactor.description")}
 		>
-			{user?.twoFactorEnabled ? (
+			{user?.user_metadata?.twoFactorEnabled ? (
 				<div className="flex items-start flex-col gap-4">
 					<div className="flex items-center gap-1.5">
 						<ShieldCheckIcon className="size-6 text-green-500" />

@@ -18,10 +18,7 @@ export default async function AppStartPage() {
 		config.organizations.enable &&
 		config.organizations.requireOrganization
 	) {
-		const organization =
-			organizations.find(
-				(org) => org.id === session?.session.activeOrganizationId,
-			) || organizations[0];
+		const organization = organizations[0];
 
 		if (!organization) {
 			redirect("/new-organization");
@@ -35,7 +32,7 @@ export default async function AppStartPage() {
 	return (
 		<div className="">
 			<PageHeader
-				title={t("start.welcome", { name: session?.user.name })}
+				title={t("start.welcome", { name: session?.user?.user_metadata?.name || session?.user?.email })}
 				subtitle={t("start.subtitle")}
 			/>
 

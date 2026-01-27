@@ -33,13 +33,13 @@ export function OnboardingStep1({ onCompleted }: { onCompleted: () => void }) {
 	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
-			name: user?.name ?? "",
+			name: (user?.user_metadata?.name as string) ?? "",
 		},
 	});
 
 	useEffect(() => {
 		if (user) {
-			form.setValue("name", user.name ?? "");
+			form.setValue("name", (user.user_metadata?.name as string) ?? "");
 		}
 	}, [user]);
 

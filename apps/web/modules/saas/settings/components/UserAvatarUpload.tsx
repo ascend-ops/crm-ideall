@@ -87,8 +87,8 @@ export function UserAvatarUpload({
 				<input {...getInputProps()} />
 				<UserAvatar
 					className="size-24 cursor-pointer text-xl"
-					avatarUrl={user.image}
-					name={user.name ?? ""}
+					avatarUrl={user.user_metadata?.avatar_url as string | undefined}
+					name={(user.user_metadata?.name as string) ?? ""}
 				/>
 
 				{uploading && (
