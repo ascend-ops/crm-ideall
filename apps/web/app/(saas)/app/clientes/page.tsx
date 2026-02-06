@@ -11,6 +11,7 @@ import {
 	Globe,
 	Hash,
 	LayoutDashboard,
+	LogOut,
 	Mail,
 	MapPin,
 	Menu,
@@ -61,6 +62,7 @@ interface Profile {
 	name: string;
 	email: string;
 	role: string;
+	tenantId?: string;
 }
 
 interface Parceiro {
@@ -71,10 +73,10 @@ interface Parceiro {
 
 interface Observacao {
 	id: string;
-	cliente_id: string;
-	profile_id: string;
-	observacao: string;
-	created_at: string;
+	clienteId: string;
+	profileId: string;
+	texto: string;
+	createdAt: string;
 	profile_nome: string;
 	profile_email: string;
 	profile_role: string;
@@ -83,7 +85,7 @@ interface Observacao {
 const STATUS_OPTIONS = [
 	"aprovado",
 	"em análise",
-	"aguardando documentos",
+	"aguarda documentos",
 	"reprovado",
 	"fidelizado",
 ];
@@ -91,13 +93,13 @@ const STATUS_OPTIONS = [
 const STATUS_COLORS = {
 	aprovado: "bg-green-100 text-green-800 border-green-200",
 	"em análise": "bg-yellow-100 text-yellow-800 border-yellow-200",
-	"aguardando documentos": "bg-blue-100 text-blue-800 border-blue-200",
+	"aguarda documentos": "bg-blue-100 text-blue-800 border-blue-200",
 	reprovado: "bg-red-100 text-red-800 border-red-200",
 	fidelizado: "bg-purple-100 text-purple-800 border-purple-200",
 };
 
 // Opções de produto para dropdown
-const PRODUTO_OPTIONS = ["internet", "energia"];
+const PRODUTO_OPTIONS = ["internet", "energia", "painéis solares", "alarmes"];
 
 // Função auxiliar para formatar datas para input type="date"
 const formatDateForInput = (dateString: string | null): string => {
@@ -192,7 +194,7 @@ export default function ClientesPage() {
 			console.log("📞 Chamando carregarParceirosDoGestor...");
 			carregarParceirosDoGestor(profile.id);
 		} else {
-			console.log(`👤 Usuário não é gestor. Role: ${profile?.role}`);
+			console.log(`👤 Utilizador não é gestor. Role: ${profile?.role}`);
 		}
 	}, [profile]);
 
@@ -215,13 +217,13 @@ export default function ClientesPage() {
 		try {
 			// Query com JOIN para pegar dados do perfil
 			const { data, error } = await supabase
-				.from("observacoes_cliente")
+				.from("observacoes")
 				.select(`
 					*,
-					profiles:profile_id (id, name, email, role)
+					profiles:"profileId" (id, name, email, role)
 				`)
-				.eq("cliente_id", clienteId)
-				.order("created_at", { ascending: false });
+				.eq("clienteId", clienteId)
+				.order("createdAt", { ascending: false });
 
 			if (error) {
 				throw error;
@@ -231,12 +233,12 @@ export default function ClientesPage() {
 			const observacoesComPerfil =
 				data?.map((obs: any) => ({
 					id: obs.id,
-					cliente_id: obs.cliente_id,
-					profile_id: obs.profile_id,
-					observacao: obs.observacao,
-					created_at: obs.created_at,
+					clienteId: obs.clienteId,
+					profileId: obs.profileId,
+					texto: obs.texto,
+					createdAt: obs.createdAt,
 					// Informações do perfil que fez a observação
-					profile_nome: obs.profiles?.name || "Usuário",
+					profile_nome: obs.profiles?.name || "Utilizador",
 					profile_email: obs.profiles?.email || "",
 					profile_role: obs.profiles?.role || "desconhecido",
 				})) || [];
@@ -260,12 +262,24 @@ export default function ClientesPage() {
 
 		setAdicionandoObservacao(true);
 		try {
+			// Obter tenantId: do profile carregado ou buscar da BD
+			let tenantId = profile.tenantId;
+			if (!tenantId) {
+				const { data: p } = await supabase
+					.from("profiles")
+					.select("tenantId")
+					.eq("id", profile.id)
+					.single();
+				tenantId = p?.tenantId;
+			}
+
 			const { error } = await supabase
-				.from("observacoes_cliente")
+				.from("observacoes")
 				.insert({
-					cliente_id: clienteId,
-					profile_id: profile.id,
-					observacao: observacao.trim(),
+					clienteId: clienteId,
+					profileId: profile.id,
+					tenantId: tenantId,
+					texto: observacao.trim(),
 				});
 
 			if (error) {
@@ -369,7 +383,7 @@ export default function ClientesPage() {
 					id: session.user.id,
 					name: session.user.email
 						? session.user.email.split("@")[0]
-						: "Usuário",
+						: "Utilizador",
 					email: session.user.email ?? "sem-email@exemplo.com",
 					role: role,
 				};
@@ -380,6 +394,8 @@ export default function ClientesPage() {
 				await loadClientes(profileData.role, profileData.id);
 				if (profileData.role === "gestor") {
 					await carregarParceirosDoGestor(profileData.id);
+				} else if (profileData.role === "tenant" && profileData.tenantId) {
+					await carregarParceirosDoTenant(profileData.tenantId);
 				}
 			} else {
 				router.push("/auth/login");
@@ -388,6 +404,26 @@ export default function ClientesPage() {
 			router.push("/auth/login");
 		} finally {
 			setLoading(false);
+		}
+	};
+
+	const carregarParceirosDoTenant = async (tenantId: string) => {
+		try {
+			const { data, error } = await supabase
+				.from("profiles")
+				.select("id, name, email")
+				.eq("role", "parceiro")
+				.eq("tenantId", tenantId);
+
+			if (error) {
+				console.error("Erro ao carregar parceiros do tenant:", error);
+				return;
+			}
+
+			setParceirosDoGestor(data || []);
+		} catch (err) {
+			console.error("Erro ao carregar parceiros do tenant:", err);
+			setParceirosDoGestor([]);
 		}
 	};
 
@@ -647,7 +683,7 @@ export default function ClientesPage() {
 
 	const buscarResponsavelNome = async (profileId: string) => {
 		if (!profileId) {
-			setResponsavelNome("Não vinculado");
+			setResponsavelNome("Não associado");
 			return;
 		}
 
@@ -776,6 +812,13 @@ export default function ClientesPage() {
 		return sortConfig.direction === "asc" ? " ↑" : " ↓";
 	};
 
+	const handleLogout = async () => {
+		await supabase.auth.signOut();
+		setProfile(null);
+		setUser(null);
+		router.push("/auth/login");
+	};
+
 	const handleNavigation = (path: string) => {
 		router.push(path);
 	};
@@ -830,16 +873,21 @@ export default function ClientesPage() {
 			dataFimContrato: formatDateForInput(cliente.dataFimContrato),
 		});
 
-		// Se o gestor está editando, carregar parceiros
+		// Carregar parceiros para gestor ou tenant
 		if (profile?.role === "gestor") {
 			await carregarParceirosDoGestor(profile.id);
+		} else if (profile?.role === "tenant" && profile.tenantId) {
+			await carregarParceirosDoTenant(profile.tenantId);
+		}
 
-			// Se o cliente já tem um parceiro, selecioná-lo
-			if (cliente.responsavelId) {
-				setParceiroSelecionadoEdicao(cliente.responsavelId);
-			} else {
-				setParceiroSelecionadoEdicao("");
-			}
+		// Se o cliente já tem um parceiro, selecioná-lo
+		if (
+			(profile?.role === "gestor" || profile?.role === "tenant") &&
+			cliente.responsavelId
+		) {
+			setParceiroSelecionadoEdicao(cliente.responsavelId);
+		} else {
+			setParceiroSelecionadoEdicao("");
 		}
 
 		setModalEditarOpen(true);
@@ -884,26 +932,26 @@ export default function ClientesPage() {
 				dataFimContrato: clienteEditando.dataFimContrato || null,
 			};
 
-			// Se for gestor e estiver editando um cliente dele, permitir alterar o responsavelId
+			// Gestor ou tenant podem alterar o responsavelId
 			if (
-				profile.role === "gestor" &&
-				clienteEditando.profileId === profile.id
+				profile.role === "tenant" ||
+				(profile.role === "gestor" &&
+					clienteEditando.profileId === profile.id)
 			) {
-				// Validar se o parceiro selecionado é válido
 				if (parceiroSelecionadoEdicao) {
 					const parceiroValido = parceirosDoGestor.find(
 						(p) => p.id === parceiroSelecionadoEdicao,
 					);
 
 					if (!parceiroValido) {
-						alert("Este parceiro não está vinculado a você");
+						alert("Este parceiro não está disponível");
 						setEditandoLoading(false);
 						return;
 					}
 
 					dadosAtualizacao.responsavelId = parceiroSelecionadoEdicao;
 				} else {
-					// Remover atribuição se selecionou "Nenhum"
+					// "Sem parceiro" — grava NULL
 					dadosAtualizacao.responsavelId = null;
 				}
 			}
@@ -983,7 +1031,7 @@ export default function ClientesPage() {
 					.single();
 
 				if (!gestorProfile?.tenantId) {
-					alert("Gestor sem tenant associado");
+					alert("Gestor sem empresa associada");
 					setAdicionandoLoading(false);
 					return;
 				}
@@ -999,7 +1047,7 @@ export default function ClientesPage() {
 					if (parceiroValido) {
 						dadosCliente.responsavelId = parceiroSelecionado;
 					} else {
-						alert("Este parceiro não está vinculado a você");
+						alert("Este parceiro não está associado a si");
 						setAdicionandoLoading(false);
 						return;
 					}
@@ -1011,7 +1059,7 @@ export default function ClientesPage() {
 
 			// VALIDAÇÃO FINAL
 			if (!dadosCliente.tenantId) {
-				alert("Erro: Não foi possível determinar o tenant do cliente");
+				alert("Erro: Não foi possível determinar a empresa do cliente");
 				setAdicionandoLoading(false);
 				return;
 			}
@@ -1060,7 +1108,7 @@ export default function ClientesPage() {
 	const handleDeletar = async (clienteId: string, clienteNome: string) => {
 		if (
 			!confirm(
-				`Tem certeza que deseja deletar o cliente "${clienteNome}"? Esta ação não pode ser desfeita.`,
+				`Tem a certeza que deseja eliminar o cliente "${clienteNome}"? Esta ação não pode ser revertida.`,
 			)
 		) {
 			return;
@@ -1080,9 +1128,9 @@ export default function ClientesPage() {
 				await loadClientes(profile.role, profile.id);
 			}
 
-			alert("Cliente deletado com sucesso!");
+			alert("Cliente eliminado com sucesso!");
 		} catch (_err) {
-			alert("Erro ao deletar cliente");
+			alert("Erro ao eliminar cliente");
 		}
 	};
 
@@ -1351,6 +1399,19 @@ export default function ClientesPage() {
 								</div>
 							)}
 						</div>
+						<button
+							type="button"
+							onClick={handleLogout}
+							className={`flex items-center w-full mt-3 p-2 rounded-lg text-red-600 hover:bg-red-50 transition-colors ${expanded ? "justify-start gap-2" : "justify-center"}`}
+							aria-label="Terminar sessão"
+						>
+							<LogOut className="w-4 h-4 shrink-0" />
+							{expanded && (
+								<span className="text-sm font-medium">
+									Terminar sessão
+								</span>
+							)}
+						</button>
 					</div>
 				</div>
 			</nav>
@@ -1428,7 +1489,7 @@ export default function ClientesPage() {
 									className="block text-sm font-medium text-gray-700 mb-1"
 								>
 									<Search size={16} className="inline mr-1" />
-									Buscar cliente
+									Pesquisar cliente
 								</label>
 								<div className="relative">
 									<Search
@@ -1439,7 +1500,7 @@ export default function ClientesPage() {
 									<input
 										id="search-input"
 										type="text"
-										placeholder="Buscar cliente (nome, email, telefone, NIF, código postal...)"
+										placeholder="Pesquisar cliente (nome, email, telefone, NIF, código postal...)"
 										value={searchTerm}
 										onChange={(e) =>
 											setSearchTerm(e.target.value)
@@ -1777,8 +1838,8 @@ export default function ClientesPage() {
 																		)
 																	}
 																	className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-																	title="Excluir"
-																	aria-label={`Excluir cliente ${cliente.name}`}
+																	title="Eliminar"
+																	aria-label={`Eliminar cliente ${cliente.name}`}
 																>
 																	<Trash2
 																		size={
@@ -2012,9 +2073,9 @@ export default function ClientesPage() {
 													</h4>
 													<p className="text-sm text-blue-600 mt-1">
 														Escolha um parceiro para
-														gerenciar este cliente
+														gerir este cliente
 														ou deixe em branco para
-														você mesmo gerenciar
+														gerir pessoalmente
 													</p>
 
 													{/* LOG DE DEBUG ADICIONADO */}
@@ -2047,8 +2108,7 @@ export default function ClientesPage() {
 															className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
 														>
 															<option value="">
-																Nenhum (eu mesmo
-																gerencio)
+																Gerir pessoalmente
 															</option>
 															{parceirosDoGestor.map(
 																(parceiro) => (
@@ -2108,11 +2168,10 @@ export default function ClientesPage() {
 														{parceirosDoGestor.length ===
 															0 && (
 															<p className="text-sm text-gray-500 mt-2">
-																Você não tem
-																parceiros
-																vinculados.
-																Entre em contato
-																com o tenant.
+																Não tem parceiros
+																associados.
+																Contacte o
+																administrador.
 															</p>
 														)}
 													</div>
@@ -2125,7 +2184,7 @@ export default function ClientesPage() {
 												<div className="bg-gray-50 p-4 rounded-xl">
 													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 														<Mail className="w-5 h-5 text-blue-600" />
-														Informações de Contato
+														Informações de Contacto
 													</h3>
 													<div className="space-y-4">
 														<div>
@@ -2280,13 +2339,13 @@ export default function ClientesPage() {
 																	)
 																}
 																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[100px]"
-																placeholder="Digite uma observação sobre o cliente..."
+																placeholder="Escreva uma observação sobre o cliente..."
 																rows={3}
 															/>
 															<p className="text-xs text-gray-500 mt-1">
 																Esta observação
-																será registrada
-																com seu nome e
+																será registada
+																com o seu nome e
 																data
 															</p>
 														</div>
@@ -2572,7 +2631,7 @@ export default function ClientesPage() {
 											{adicionandoLoading ? (
 												<>
 													<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-													Criando...
+													A criar...
 												</>
 											) : (
 												<>
@@ -2643,7 +2702,7 @@ export default function ClientesPage() {
 											<div className="bg-gray-50 p-4 rounded-xl">
 												<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 													<Mail className="w-5 h-5 text-blue-600" />
-													Informações de Contato
+													Informações de Contacto
 												</h3>
 												<div className="space-y-3">
 													<div className="flex items-center gap-3">
@@ -2834,13 +2893,13 @@ export default function ClientesPage() {
 															)
 														}
 														className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[80px]"
-														placeholder="Digite sua observação aqui..."
+														placeholder="Escreva a sua observação aqui..."
 														rows={3}
 													/>
 													<div className="flex justify-between items-center mt-3">
 														<p className="text-xs text-blue-600">
 															Esta observação será
-															registrada com seu
+															registada com o seu
 															nome e data
 														</p>
 														<button
@@ -2916,13 +2975,13 @@ export default function ClientesPage() {
 															</div>
 															<span className="text-xs text-gray-500">
 																{new Date(
-																	obs.created_at,
+																	obs.createdAt,
 																).toLocaleDateString(
 																	"pt-PT",
 																)}
 																<br />
 																{new Date(
-																	obs.created_at,
+																	obs.createdAt,
 																).toLocaleTimeString(
 																	"pt-PT",
 																	{
@@ -2936,7 +2995,7 @@ export default function ClientesPage() {
 														{/* OBSERVAÇÃO EM SI */}
 														<div className="bg-gray-50 p-3 rounded">
 															<p className="text-gray-700 whitespace-pre-wrap">
-																{obs.observacao}
+																{obs.texto}
 															</p>
 														</div>
 													</div>
@@ -2949,7 +3008,7 @@ export default function ClientesPage() {
 												</div>
 												<p className="text-lg font-medium text-gray-700">
 													Nenhuma observação
-													registrada
+													registada
 												</p>
 												<p className="text-gray-500 mt-1">
 													Seja o primeiro a adicionar
@@ -3010,7 +3069,7 @@ export default function ClientesPage() {
 												</p>
 												<p className="font-medium truncate">
 													{responsavelNome ||
-														"Carregando..."}
+														"A carregar..."}
 												</p>
 											</div>
 										</div>
@@ -3021,7 +3080,7 @@ export default function ClientesPage() {
 							<div className="border-t border-gray-200 p-4 bg-gray-50">
 								<div className="flex items-center justify-between">
 									<div className="text-sm text-gray-500">
-										Cliente cadastrado há{" "}
+										Cliente registado há{" "}
 										{Math.floor(
 											(Date.now() -
 												new Date(
@@ -3053,7 +3112,7 @@ export default function ClientesPage() {
 													onClick={() => {
 														if (
 															confirm(
-																`Tem certeza que deseja excluir ${selectedCliente.name}?`,
+																`Tem a certeza que deseja eliminar ${selectedCliente.name}?`,
 															)
 														) {
 															handleDeletar(
@@ -3066,7 +3125,7 @@ export default function ClientesPage() {
 													className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors flex items-center gap-2"
 												>
 													<Trash2 size={16} />
-													Excluir
+													Eliminar
 												</button>
 											</>
 										)}
@@ -3140,7 +3199,7 @@ export default function ClientesPage() {
 												<div className="bg-gray-50 p-4 rounded-xl">
 													<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 														<Mail className="w-5 h-5 text-blue-600" />
-														Informações de Contato
+														Informações de Contacto
 													</h3>
 													<div className="space-y-4">
 														<div>
@@ -3308,9 +3367,9 @@ export default function ClientesPage() {
 																	Esta
 																	observação
 																	será
-																	registrada
-																	junto com as
-																	alterações
+																	registada
+																	juntamente com
+																	as alterações
 																</p>
 															</div>
 														</div>
@@ -3540,18 +3599,18 @@ export default function ClientesPage() {
 											</div>
 										</div>
 
-										{profile?.role === "gestor" &&
-											clienteEditando.profileId ===
-												profile.id && (
+										{(profile?.role === "tenant" ||
+											(profile?.role === "gestor" &&
+												clienteEditando.profileId ===
+													profile.id)) && (
 												<div className="space-y-4 mt-4">
 													<div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
 														<h4 className="font-medium text-blue-800 flex items-center gap-2">
 															<Users size={16} />
-															Atribuição do
-															Cliente
+															Parceiro Responsável
 														</h4>
 														<p className="text-sm text-blue-600 mt-1">
-															Gerencie quem é
+															Atribua um parceiro
 															responsável por este
 															cliente
 														</p>
@@ -3561,7 +3620,7 @@ export default function ClientesPage() {
 																htmlFor="parceiro-select-edicao"
 																className="block text-sm font-medium text-gray-700 mb-1"
 															>
-																Responsável
+																Parceiro Responsável
 															</label>
 															<select
 																id="parceiro-select-edicao"
@@ -3577,8 +3636,7 @@ export default function ClientesPage() {
 																className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
 															>
 																<option value="">
-																	Eu mesmo
-																	(Gestor)
+																	Sem parceiro
 																</option>
 																{parceirosDoGestor.map(
 																	(
@@ -3619,7 +3677,7 @@ export default function ClientesPage() {
 																					clienteEditando.responsavelId,
 																			)
 																				?.name ||
-																				"Carregando..."}
+																				"A carregar..."}
 																		</span>
 																	</p>
 																</div>
@@ -3713,12 +3771,12 @@ export default function ClientesPage() {
 											{editandoLoading ? (
 												<>
 													<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-													Salvando...
+													A guardar...
 												</>
 											) : (
 												<>
 													<Save size={16} />
-													Salvar Alterações
+													Guardar Alterações
 												</>
 											)}
 										</button>

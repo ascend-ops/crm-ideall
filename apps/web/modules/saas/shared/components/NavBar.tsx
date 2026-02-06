@@ -9,20 +9,28 @@ import {
 	BotMessageSquareIcon,
 	ChevronRightIcon,
 	HomeIcon,
+	LogOutIcon,
 	SettingsIcon,
 	UserCog2Icon,
 	UserCogIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { supabase } from "../../../../lib/supabase/client";
 import { OrganzationSelect } from "../../organizations/components/OrganizationSelect";
 
 export function NavBar() {
 	const t = useTranslations();
 	const pathname = usePathname();
+	const router = useRouter();
 	const { user } = useSession();
 	const { activeOrganization } = useActiveOrganization();
+
+	const handleLogout = async () => {
+		await supabase.auth.signOut();
+		router.push("/auth/login");
+	};
 
 	const { useSidebarLayout } = config.ui.saas;
 
@@ -188,6 +196,14 @@ export function NavBar() {
 					)}
 				>
 					<UserMenu showUserName />
+					<button
+						type="button"
+						onClick={handleLogout}
+						className="mt-2 flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+					>
+						<LogOutIcon className="size-4" />
+						<span>Terminar sessão</span>
+					</button>
 				</div>
 			</div>
 		</nav>

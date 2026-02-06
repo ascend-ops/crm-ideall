@@ -39,7 +39,13 @@ dist/
 # typescript
 *.tsbuildinfo
 
-# other 
+# other
 .react-email/
 .content-collections/
-.prisma-zod-generator-manifest.json.env*
+.prisma-zod-generator-manifest.json
+
+# sensitive files
+.env*
+!.env.local.example
+*.sql
+dados_export.json

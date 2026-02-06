@@ -3,6 +3,7 @@
 import {
 	ChevronRight,
 	LayoutDashboard,
+	LogOut,
 	Menu,
 	TrendingUp,
 	Users,
@@ -49,7 +50,7 @@ interface GestorCardData {
 	statusCount: {
 		aprovado: number;
 		"em análise": number;
-		"aguardando documentos": number;
+		"aguarda documentos": number;
 		reprovado: number;
 		fidelizado: number;
 	};
@@ -59,7 +60,7 @@ interface MonthlyData {
 	month: string;
 	aprovado: number;
 	"em análise": number;
-	"aguardando documentos": number;
+	"aguarda documentos": number;
 	reprovado: number;
 	fidelizado: number;
 }
@@ -67,7 +68,7 @@ interface MonthlyData {
 const STATUS_ORDER = [
 	"aprovado",
 	"em análise",
-	"aguardando documentos",
+	"aguarda documentos",
 	"reprovado",
 	"fidelizado",
 ];
@@ -75,7 +76,7 @@ const STATUS_ORDER = [
 const STATUS_COLORS = {
 	aprovado: "#10b981",
 	"em análise": "#f59e0b",
-	"aguardando documentos": "#6366f1",
+	"aguarda documentos": "#6366f1",
 	reprovado: "#ef4444",
 	fidelizado: "#8b5cf6",
 };
@@ -154,7 +155,7 @@ export default function DashboardPage() {
 					id: session.user.id,
 					name: session.user.email
 						? session.user.email.split("@")[0]
-						: "Usuário",
+						: "Utilizador",
 					email: session.user.email ?? "sem-email@exemplo.com",
 					role: role,
 				};
@@ -239,7 +240,7 @@ export default function DashboardPage() {
 					const statusCount = {
 						aprovado: 0,
 						"em análise": 0,
-						"aguardando documentos": 0,
+						"aguarda documentos": 0,
 						reprovado: 0,
 						fidelizado: 0,
 					};
@@ -290,7 +291,7 @@ export default function DashboardPage() {
 				month: "Todos os meses",
 				aprovado: 0,
 				"em análise": 0,
-				"aguardando documentos": 0,
+				"aguarda documentos": 0,
 				reprovado: 0,
 				fidelizado: 0,
 			};
@@ -323,7 +324,7 @@ export default function DashboardPage() {
 				month: MONTHS[monthNum],
 				aprovado: 0,
 				"em análise": 0,
-				"aguardando documentos": 0,
+				"aguarda documentos": 0,
 				reprovado: 0,
 				fidelizado: 0,
 			};
@@ -350,7 +351,7 @@ export default function DashboardPage() {
 				month: "Todos",
 				aprovado: 0,
 				"em análise": 0,
-				"aguardando documentos": 0,
+				"aguarda documentos": 0,
 				reprovado: 0,
 				fidelizado: 0,
 			};
@@ -401,6 +402,13 @@ export default function DashboardPage() {
 		(_, i) => currentYear - 5 + i,
 	).filter((year) => year <= currentYear);
 
+	const handleLogout = async () => {
+		await supabase.auth.signOut();
+		setProfile(null);
+		setUser(null);
+		router.push("/auth/login");
+	};
+
 	const handleNavigation = (path: string) => {
 		router.push(path);
 	};
@@ -435,7 +443,7 @@ export default function DashboardPage() {
 	if (loading) {
 		return (
 			<div className="p-6">
-				<h1 className="text-2xl font-bold">Carregando...</h1>
+				<h1 className="text-2xl font-bold">A carregar...</h1>
 			</div>
 		);
 	}
@@ -575,6 +583,19 @@ export default function DashboardPage() {
 								</div>
 							)}
 						</div>
+						<button
+							type="button"
+							onClick={handleLogout}
+							className={`flex items-center w-full mt-3 p-2 rounded-lg text-red-600 hover:bg-red-50 transition-colors ${expanded ? "justify-start gap-2" : "justify-center"}`}
+							aria-label="Terminar sessão"
+						>
+							<LogOut className="w-4 h-4 shrink-0" />
+							{expanded && (
+								<span className="text-sm font-medium">
+									Terminar sessão
+								</span>
+							)}
+						</button>
 					</div>
 				</div>
 			</nav>
@@ -646,12 +667,12 @@ export default function DashboardPage() {
 								Distribuição por Status
 								{profile?.role === "gestor" && (
 									<span className="text-sm font-normal ml-2 text-gray-500">
-										(Seus clientes)
+										(Os seus clientes)
 									</span>
 								)}
 								{profile?.role === "tenant" && (
 									<span className="text-sm font-normal ml-2 text-gray-500">
-										(Todos os clientes do tenant)
+										(Todos os clientes da empresa)
 									</span>
 								)}
 							</h2>
@@ -661,7 +682,7 @@ export default function DashboardPage() {
 								{/* Botão para mostrar todos os dados */}
 								<div className="w-full md:w-auto">
 									<div className="text-sm font-medium text-gray-700 mb-1">
-										Visualização
+										Vista
 									</div>
 									<button
 										type="button"
@@ -818,7 +839,7 @@ export default function DashboardPage() {
 							{gestoresCards.length > 0 ? (
 								<div className="bg-white p-6 rounded-lg shadow border">
 									<h2 className="text-xl font-semibold mb-6 text-gray-800">
-										Gestores do Seu Tenant
+										Gestores da Sua Empresa
 										<span className="text-sm font-normal ml-2 text-gray-500">
 											({gestoresCards.length} gestores)
 										</span>
@@ -917,12 +938,12 @@ export default function DashboardPage() {
 											</h2>
 											<div className="mt-2 text-yellow-700">
 												<p>
-													Você ainda não tem gestores
-													vinculados ao seu tenant.
+													Ainda não tem gestores
+													associados à sua empresa.
 												</p>
 												<p className="text-sm mt-1">
 													<strong>Debug info:</strong>{" "}
-													Tenant ID: {profile.id}
+													ID Empresa: {profile.id}
 												</p>
 											</div>
 										</div>
@@ -949,7 +970,7 @@ export default function DashboardPage() {
 										{profile.email}
 									</p>
 									<p className="mt-2 font-semibold text-gray-800">
-										Clientes vinculados:{" "}
+										Clientes associados:{" "}
 										<strong>{clientes.length}</strong>
 									</p>
 									<p className="text-sm text-gray-500">

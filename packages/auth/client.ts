@@ -50,7 +50,7 @@ export const authClient = {
 				fetch("/api/auth/sync-profile", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ userId: res.data.user.id, email }),
+					body: JSON.stringify({ name: res.data.user.user_metadata?.name }),
 				}).catch(() => {});
 			}
 
@@ -111,11 +111,7 @@ export const authClient = {
 				fetch("/api/auth/sync-profile", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						userId: res.data.user.id,
-						email,
-						name,
-					}),
+					body: JSON.stringify({ name }),
 				}).catch(() => {});
 			}
 
@@ -220,8 +216,27 @@ export const authClient = {
 	},
 
 	async changePassword({ currentPassword, newPassword, revokeOtherSessions }: { currentPassword: string; newPassword: string; revokeOtherSessions?: boolean }) {
+		// Re-authenticate with current password first
+		const { data: { user } } = await supabase.auth.getUser();
+		if (!user?.email) {
+			return { data: null, error: { message: "No authenticated user found" } };
+		}
+
+		const { error: signInError } = await supabase.auth.signInWithPassword({
+			email: user.email,
+			password: currentPassword,
+		});
+		if (signInError) {
+			return { data: null, error: { message: "Current password is incorrect" } };
+		}
+
 		const { error } = await supabase.auth.updateUser({ password: newPassword });
 		if (error) return { data: null, error };
+
+		if (revokeOtherSessions) {
+			await supabase.auth.signOut({ scope: "others" });
+		}
+
 		return { data: { success: true }, error: null };
 	},
 

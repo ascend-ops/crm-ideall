@@ -3,6 +3,7 @@
 import {
 	ChevronRight,
 	LayoutDashboard,
+	LogOut,
 	Menu,
 	TrendingUp,
 	Users,
@@ -137,7 +138,7 @@ export default function GraficoAprovadosPage() {
 					id: session.user.id,
 					name: session.user.email
 						? session.user.email.split("@")[0]
-						: "Usuário",
+						: "Utilizador",
 					email: session.user.email ?? "sem-email@exemplo.com",
 					role: role,
 				};
@@ -268,6 +269,13 @@ export default function GraficoAprovadosPage() {
 		setChartData(monthlyData);
 	};
 
+	const handleLogout = async () => {
+		await supabase.auth.signOut();
+		setProfile(null);
+		setUser(null);
+		router.push("/auth/login");
+	};
+
 	const handleNavigation = (path: string) => {
 		router.push(path);
 	};
@@ -305,7 +313,7 @@ export default function GraficoAprovadosPage() {
 				<div className="flex-1 flex items-center justify-center">
 					<div className="text-center">
 						<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-						<p className="text-gray-600">Carregando...</p>
+						<p className="text-gray-600">A carregar...</p>
 					</div>
 				</div>
 			</div>
@@ -434,6 +442,19 @@ export default function GraficoAprovadosPage() {
 								</div>
 							)}
 						</div>
+						<button
+							type="button"
+							onClick={handleLogout}
+							className={`flex items-center w-full mt-3 p-2 rounded-lg text-red-600 hover:bg-red-50 transition-colors ${expanded ? "justify-start gap-2" : "justify-center"}`}
+							aria-label="Terminar sessão"
+						>
+							<LogOut className="w-4 h-4 shrink-0" />
+							{expanded && (
+								<span className="text-sm font-medium">
+									Terminar sessão
+								</span>
+							)}
+						</button>
 					</div>
 				</div>
 			</nav>
@@ -809,7 +830,7 @@ export default function GraficoAprovadosPage() {
 											●
 										</span>
 										<span>
-											Visualização contínua para análise
+											Vista contínua para análise
 											de tendências
 										</span>
 									</li>
@@ -820,20 +841,20 @@ export default function GraficoAprovadosPage() {
 						<div className="bg-white p-6 rounded-lg shadow border">
 							<h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
 								<Users className="w-5 h-5 text-green-600" />
-								Seus Dados ({profile.role})
+								Os Seus Dados ({profile.role})
 							</h3>
 							<div className="space-y-4">
 								<div>
 									<p className="text-sm text-gray-500">
-										Visualização atual
+										Vista atual
 									</p>
 									<p className="font-medium">
 										{profile.role === "tenant" &&
-											"Todos os clientes do seu tenant"}
+											"Todos os clientes da sua empresa"}
 										{profile.role === "gestor" &&
-											"Apenas seus clientes"}
+											"Apenas os seus clientes"}
 										{profile.role === "parceiro" &&
-											"Clientes atribuídos a você"}
+											"Clientes atribuídos a si"}
 									</p>
 								</div>
 								<div>

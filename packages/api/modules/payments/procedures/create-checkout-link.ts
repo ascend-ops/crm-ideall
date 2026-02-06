@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 import { localeMiddleware } from "../../../orpc/middleware/locale-middleware";
 import { protectedProcedure } from "../../../orpc/procedures";
+import { verifyOrganizationMembership } from "../../organizations/lib/membership";
 
 export const createCheckoutLink = protectedProcedure
 	.use(localeMiddleware)
@@ -33,6 +34,13 @@ export const createCheckoutLink = protectedProcedure
 			input: { productId, redirectUrl, type, organizationId },
 			context: { user },
 		}) => {
+			if (organizationId) {
+				const membership = await verifyOrganizationMembership(organizationId, user.id);
+				if (!membership || !["owner", "admin"].includes(membership.role)) {
+					throw new ORPCError("FORBIDDEN");
+				}
+			}
+
 			const customerId = await getCustomerIdFromEntity(
 				organizationId
 					? {

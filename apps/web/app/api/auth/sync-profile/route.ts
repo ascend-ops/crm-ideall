@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 function getServiceSupabase() {
@@ -14,35 +16,74 @@ function getServiceSupabase() {
 	});
 }
 
+async function getAuthenticatedUser() {
+	const cookieStore = await cookies();
+	const supabase = createServerClient(
+		process.env.NEXT_PUBLIC_SUPABASE_URL!,
+		process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+		{
+			cookies: {
+				getAll() {
+					return cookieStore.getAll();
+				},
+				setAll(cookiesToSet) {
+					try {
+						for (const { name, value, options } of cookiesToSet) {
+							cookieStore.set(name, value, options);
+						}
+					} catch {
+						// Ignore in read-only context
+					}
+				},
+			},
+		},
+	);
+
+	const { data: { user }, error } = await supabase.auth.getUser();
+	if (error || !user) return null;
+	return user;
+}
+
 export async function POST(req: Request) {
 	const serviceSupabase = getServiceSupabase();
 	try {
-		const body = await req.json();
-		const { userId, email, name, tenantId, role } = body;
-
-		if (!userId) {
+		// Verify the caller is authenticated
+		const authenticatedUser = await getAuthenticatedUser();
+		if (!authenticatedUser) {
 			return NextResponse.json(
-				{ error: "userId required" },
-				{ status: 400 },
+				{ error: "Unauthorized" },
+				{ status: 401 },
 			);
 		}
 
-		// Adjust column names to your schema: uses camelCase columns (e.g., "tenantId", "name", etc.)
-		// Upsert by id to ensure profiles.id = auth.uid()
+		const body = await req.json();
+		const { name } = body;
+
+		// Only allow syncing the caller's own profile -- never accept userId, role, or tenantId from the client
+		const userId = authenticatedUser.id;
+		const email = authenticatedUser.email;
+
+		// Check if profile already exists
+		const { data: existing } = await serviceSupabase
+			.from("profiles")
+			.select("id, role, tenantId")
+			.eq("id", userId)
+			.single();
+
 		const payload: Record<string, unknown> = {
 			id: userId,
 			email,
-			name,
-			// if you want to set default role, remove or set accordingly
-			role: role ?? "partner",
+			name: name || authenticatedUser.user_metadata?.name || email,
 		};
 
-		if (tenantId) {
-			payload.tenantId = tenantId;
+		// Preserve existing role and tenantId -- never allow client to override
+		if (existing) {
+			payload.role = existing.role;
+			payload.tenantId = existing.tenantId;
+		} else {
+			payload.role = "parceiro";
 		}
 
-		// Do an upsert: if id exists do nothing (or update certain fields)
-		// Using rpc/insert via supabase client
 		const { data, error } = await serviceSupabase
 			.from("profiles")
 			.upsert(payload, { onConflict: "id" })
@@ -50,7 +91,7 @@ export async function POST(req: Request) {
 
 		if (error) {
 			console.error("sync-profile error", error);
-			return NextResponse.json({ error }, { status: 500 });
+			return NextResponse.json({ error: "Failed to sync profile" }, { status: 500 });
 		}
 
 		return NextResponse.json({ data });

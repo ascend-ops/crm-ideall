@@ -29,7 +29,10 @@ export const updateChat = protectedProcedure
 		}
 
 		if (chat.organizationId) {
-			await verifyOrganizationMembership(chat.organizationId, user.id);
+			const membership = await verifyOrganizationMembership(chat.organizationId, user.id);
+			if (!membership) {
+				throw new ORPCError("FORBIDDEN");
+			}
 		} else if (chat.userId !== context.user.id) {
 			throw new ORPCError("FORBIDDEN");
 		}
