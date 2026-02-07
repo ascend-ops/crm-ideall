@@ -11,6 +11,7 @@ import {
 	Globe,
 	Hash,
 	LayoutDashboard,
+	Link2,
 	LogOut,
 	Mail,
 	MapPin,
@@ -22,6 +23,7 @@ import {
 	Trash2,
 	TrendingUp,
 	User as UserIcon,
+	UserPlus,
 	Users,
 	X,
 } from "lucide-react";
@@ -170,6 +172,30 @@ export default function ClientesPage() {
 	const [novaObservacao, setNovaObservacao] = useState<string>("");
 	const [carregandoObservacoes, setCarregandoObservacoes] = useState(false);
 	const [adicionandoObservacao, setAdicionandoObservacao] = useState(false);
+	const [observacaoParaEliminar, setObservacaoParaEliminar] = useState<string | null>(null);
+	const [eliminandoObservacao, setEliminandoObservacao] = useState(false);
+
+	// Estados para modal "Adicionar Parceiro"
+	const [modalAdicionarParceiroOpen, setModalAdicionarParceiroOpen] = useState(false);
+	const [novoParceiro, setNovoParceiro] = useState({
+		name: "",
+		email: "",
+		password: "",
+		telefone: "",
+		endereco: "",
+		localidade: "",
+		codigoPostal: "",
+	});
+	const [criandoParceiro, setCriandoParceiro] = useState(false);
+
+	// Estados para modal "Gerir Parceiros" (associações gestor ↔ parceiro)
+	const [modalGerirParceirosOpen, setModalGerirParceirosOpen] = useState(false);
+	const [gestoresDoTenant, setGestoresDoTenant] = useState<{ id: string; name: string; email: string }[]>([]);
+	const [associacoes, setAssociacoes] = useState<{ id: string; gestor_id: string; parceiro_id: string; gestor_nome: string; parceiro_nome: string }[]>([]);
+	const [todosParceirosTenant, setTodosParceirosTenant] = useState<Parceiro[]>([]);
+	const [gestorSelecionadoAssoc, setGestorSelecionadoAssoc] = useState<string>("");
+	const [parceiroSelecionadoAssoc, setParceiroSelecionadoAssoc] = useState<string>("");
+	const [carregandoAssociacoes, setCarregandoAssociacoes] = useState(false);
 
 	useEffect(() => {
 		checkAuth();
@@ -184,26 +210,8 @@ export default function ClientesPage() {
 	}, [selectedCliente]);
 
 	useEffect(() => {
-		console.log("🔄 useEffect do profile disparado");
-		console.log("Profile atual:", profile);
-
 		if (profile?.role === "gestor") {
-			console.log(
-				`🎯 Gestor detectado! ID: ${profile.id}, Name: ${profile.name}`,
-			);
-			console.log("📞 Chamando carregarParceirosDoGestor...");
 			carregarParceirosDoGestor(profile.id);
-		} else {
-			console.log(`👤 Utilizador não é gestor. Role: ${profile?.role}`);
-		}
-	}, [profile]);
-
-	// Teste direto de query
-	useEffect(() => {
-		if (profile?.role === "gestor") {
-			setTimeout(() => {
-				testarConexaoParceiros();
-			}, 1000);
 		}
 	}, [profile]);
 
@@ -215,21 +223,31 @@ export default function ClientesPage() {
 
 		setCarregandoObservacoes(true);
 		try {
-			// Query com JOIN para pegar dados do perfil
 			const { data, error } = await supabase
 				.from("observacoes")
-				.select(`
-					*,
-					profiles:"profileId" (id, name, email, role)
-				`)
+				.select("*")
 				.eq("clienteId", clienteId)
 				.order("createdAt", { ascending: false });
 
-			if (error) {
-				throw error;
+			if (error) throw error;
+
+			// Buscar nomes dos perfis separadamente (evita problemas com FK hints)
+			const profileIds = [...new Set((data || []).map((obs: any) => obs.profileId))];
+			let profileMap: Record<string, { name: string; role: string }> = {};
+
+			if (profileIds.length > 0) {
+				const { data: profiles } = await supabase
+					.from("profiles")
+					.select("id, name, role")
+					.in("id", profileIds);
+
+				if (profiles) {
+					profileMap = Object.fromEntries(
+						profiles.map((p: any) => [p.id, { name: p.name, role: p.role }])
+					);
+				}
 			}
 
-			// Transformar dados
 			const observacoesComPerfil =
 				data?.map((obs: any) => ({
 					id: obs.id,
@@ -237,10 +255,9 @@ export default function ClientesPage() {
 					profileId: obs.profileId,
 					texto: obs.texto,
 					createdAt: obs.createdAt,
-					// Informações do perfil que fez a observação
-					profile_nome: obs.profiles?.name || "Utilizador",
-					profile_email: obs.profiles?.email || "",
-					profile_role: obs.profiles?.role || "desconhecido",
+					profile_nome: profileMap[obs.profileId]?.name || "Utilizador",
+					profile_email: "",
+					profile_role: profileMap[obs.profileId]?.role || "desconhecido",
 				})) || [];
 
 			setObservacoes(observacoesComPerfil);
@@ -262,15 +279,18 @@ export default function ClientesPage() {
 
 		setAdicionandoObservacao(true);
 		try {
-			// Obter tenantId: do profile carregado ou buscar da BD
-			let tenantId = profile.tenantId;
+			let tenantId: string | undefined = profile.tenantId;
 			if (!tenantId) {
-				const { data: p } = await supabase
-					.from("profiles")
-					.select("tenantId")
-					.eq("id", profile.id)
-					.single();
-				tenantId = p?.tenantId;
+				if (profile.role === "tenant") {
+					tenantId = profile.id;
+				} else {
+					const { data: p } = await supabase
+						.from("profiles")
+						.select("tenantId")
+						.eq("id", profile.id)
+						.single();
+					tenantId = p?.tenantId;
+				}
 			}
 
 			const { error } = await supabase
@@ -282,72 +302,191 @@ export default function ClientesPage() {
 					texto: observacao.trim(),
 				});
 
-			if (error) {
-				throw error;
-			}
+			if (error) throw error;
 
-			// Recarregar observações
 			await carregarObservacoes(clienteId);
 			setNovaObservacao("");
 			return true;
-		} catch (error) {
+		} catch (error: any) {
 			console.error("Erro ao adicionar observação:", error);
-			alert("Erro ao adicionar observação");
+			alert(`Erro ao adicionar observação: ${error.message || "Tente novamente"}`);
 			return false;
 		} finally {
 			setAdicionandoObservacao(false);
 		}
 	};
 
-	const testarConexaoParceiros = async () => {
-		if (!profile) {
+	// Função para eliminar observação
+	const eliminarObservacao = async (observacaoId: string) => {
+		if (!clienteEditando) return;
+
+		setEliminandoObservacao(true);
+		try {
+			const { error } = await supabase
+				.from("observacoes")
+				.delete()
+				.eq("id", observacaoId);
+
+			if (error) throw error;
+
+			await carregarObservacoes(clienteEditando.id);
+		} catch (error: any) {
+			console.error("Erro ao eliminar observação:", error);
+			alert(`Erro ao eliminar observação: ${error.message || "Tente novamente"}`);
+		} finally {
+			setEliminandoObservacao(false);
+			setObservacaoParaEliminar(null);
+		}
+	};
+
+	// Funções para gerir associações gestor ↔ parceiro
+	const carregarDadosGerirParceiros = async () => {
+		if (!profile) return;
+		setCarregandoAssociacoes(true);
+		try {
+			// Determinar tenantId
+			let tenantId = profile.tenantId;
+			if (!tenantId) {
+				if (profile.role === "tenant") {
+					tenantId = profile.id;
+				} else {
+					const { data: p } = await supabase
+						.from("profiles")
+						.select("tenantId")
+						.eq("id", profile.id)
+						.single();
+					tenantId = p?.tenantId;
+				}
+			}
+			if (!tenantId) return;
+
+			// Carregar todos os parceiros do tenant
+			const { data: parceiros } = await supabase
+				.from("profiles")
+				.select("id, name, email")
+				.eq("role", "parceiro")
+				.eq("tenantId", tenantId);
+			setTodosParceirosTenant(parceiros || []);
+
+			// Admin: carregar todos os gestores do tenant
+			if (profile.role === "tenant") {
+				const { data: gestores } = await supabase
+					.from("profiles")
+					.select("id, name, email")
+					.eq("role", "gestor")
+					.eq("tenantId", tenantId);
+				setGestoresDoTenant(gestores || []);
+			}
+
+			// Carregar associações (RLS filtra automaticamente)
+			const { data: assocData } = await supabase
+				.from("gestor_parceiros")
+				.select("*");
+
+			if (assocData && assocData.length > 0) {
+				// Resolver nomes via queries separadas
+				const gestorIds = [...new Set(assocData.map((a: any) => a.gestor_id))];
+				const parceiroIds = [...new Set(assocData.map((a: any) => a.parceiro_id))];
+				const allIds = [...new Set([...gestorIds, ...parceiroIds])];
+
+				const { data: profilesData } = await supabase
+					.from("profiles")
+					.select("id, name")
+					.in("id", allIds);
+
+				const nameMap: Record<string, string> = {};
+				if (profilesData) {
+					for (const p of profilesData) {
+						nameMap[p.id] = p.name;
+					}
+				}
+
+				const assocComNomes = assocData.map((a: any) => ({
+					id: a.id,
+					gestor_id: a.gestor_id,
+					parceiro_id: a.parceiro_id,
+					gestor_nome: nameMap[a.gestor_id] || "Gestor",
+					parceiro_nome: nameMap[a.parceiro_id] || "Parceiro",
+				}));
+				setAssociacoes(assocComNomes);
+			} else {
+				setAssociacoes([]);
+			}
+
+			// Gestor: auto-seleccionar o seu ID
+			if (profile.role === "gestor") {
+				setGestorSelecionadoAssoc(profile.id);
+			}
+		} catch (error) {
+			console.error("Erro ao carregar dados de associações:", error);
+		} finally {
+			setCarregandoAssociacoes(false);
+		}
+	};
+
+	const adicionarAssociacao = async () => {
+		if (!profile) return;
+
+		const gestorId = profile.role === "gestor" ? profile.id : gestorSelecionadoAssoc;
+		if (!gestorId || !parceiroSelecionadoAssoc) {
+			alert("Seleccione um gestor e um parceiro");
 			return;
 		}
 
-		console.log("🧪 TESTE DIRETO DE QUERY 🧪");
-
-		// Teste 1: Query sem JOIN
-		console.log("\n1. Query SEM JOIN:");
-		const { data: simples, error: erroSimples } = await supabase
-			.from("gestor_parceiros")
-			.select("*")
-			.eq("gestor_id", profile.id);
-		console.log("Resultado:", simples);
-		console.log("Erro:", erroSimples);
-
-		// Teste 2: Query com JOIN manual
-		console.log("\n2. Query em 2 PASSOS:");
-		if (simples && simples.length > 0) {
-			const parceiroIds = simples.map((r: any) => r.parceiro_id);
-			console.log("IDs dos parceiros:", parceiroIds);
-
-			const { data: profiles, error: erroProfiles } = await supabase
-				.from("profiles")
-				.select("id, name, email")
-				.in("id", parceiroIds);
-			console.log("Perfis encontrados:", profiles);
-			console.log("Erro perfis:", erroProfiles);
+		// Verificar duplicata
+		const jaExiste = associacoes.some(
+			(a) => a.gestor_id === gestorId && a.parceiro_id === parceiroSelecionadoAssoc,
+		);
+		if (jaExiste) {
+			alert("Esta associação já existe");
+			return;
 		}
 
-		// Teste 3: Verificar se o parceiro existe
-		console.log("\n3. Verificar parceiro específico:");
-		const { data: parceiroMaria, error: _erroMaria } = await supabase
-			.from("profiles")
-			.select("*")
-			.eq("id", "d2da4307-97a9-4db0-9106-fa1572244ebc");
-		console.log("Parceiro Maria existe?", parceiroMaria);
+		try {
+			const { error } = await supabase
+				.from("gestor_parceiros")
+				.insert({ gestor_id: gestorId, parceiro_id: parceiroSelecionadoAssoc });
 
-		// Teste 4: Query alternativa com JOIN
-		console.log("\n4. Query alternativa com JOIN:");
-		const { data: alternativa, error: erroAlt } = await supabase
-			.from("gestor_parceiros")
-			.select(`
-				parceiro_id,
-				parceiro:parceiro_id(id, name, email)
-			`)
-			.eq("gestor_id", profile.id);
-		console.log("Alternativa:", alternativa);
-		console.log("Erro alternativa:", erroAlt);
+			if (error) throw error;
+
+			setParceiroSelecionadoAssoc("");
+			await carregarDadosGerirParceiros();
+
+			// Recarregar parceiros para o dropdown "Parceiro Responsável"
+			if (profile.role === "gestor") {
+				await carregarParceirosDoGestor(profile.id);
+			} else if (profile.role === "tenant") {
+				await carregarParceirosDoTenant(profile.id);
+			}
+		} catch (error: any) {
+			console.error("Erro ao adicionar associação:", error);
+			alert(`Erro ao adicionar associação: ${error.message || "Tente novamente"}`);
+		}
+	};
+
+	const removerAssociacao = async (associacaoId: string) => {
+		if (!confirm("Tem a certeza que pretende remover esta associação?")) return;
+
+		try {
+			const { error } = await supabase
+				.from("gestor_parceiros")
+				.delete()
+				.eq("id", associacaoId);
+
+			if (error) throw error;
+
+			await carregarDadosGerirParceiros();
+
+			// Recarregar parceiros para o dropdown "Parceiro Responsável"
+			if (profile?.role === "gestor") {
+				await carregarParceirosDoGestor(profile.id);
+			} else if (profile?.role === "tenant") {
+				await carregarParceirosDoTenant(profile!.id);
+			}
+		} catch (error: any) {
+			console.error("Erro ao remover associação:", error);
+			alert(`Erro ao remover associação: ${error.message || "Tente novamente"}`);
+		}
 	};
 
 	const checkAuth = async () => {
@@ -394,8 +533,8 @@ export default function ClientesPage() {
 				await loadClientes(profileData.role, profileData.id);
 				if (profileData.role === "gestor") {
 					await carregarParceirosDoGestor(profileData.id);
-				} else if (profileData.role === "tenant" && profileData.tenantId) {
-					await carregarParceirosDoTenant(profileData.tenantId);
+				} else if (profileData.role === "tenant") {
+					await carregarParceirosDoTenant(profileData.tenantId || profileData.id);
 				}
 			} else {
 				router.push("/auth/login");
@@ -429,11 +568,6 @@ export default function ClientesPage() {
 
 	const carregarParceirosDoGestor = async (gestorId: string) => {
 		try {
-			console.log(
-				`🔍 INICIANDO carregarParceirosDoGestor para gestor: ${gestorId}`,
-			);
-
-			console.log("📤 Enviando query para Supabase...");
 			const { data, error } = await supabase
 				.from("gestor_parceiros")
 				.select(
@@ -444,67 +578,28 @@ export default function ClientesPage() {
 				)
 				.eq("gestor_id", gestorId);
 
-			console.log("📥 Resposta recebida:");
-			console.log("- Data:", data);
-			console.log("- Error:", error);
-			console.log("- Data type:", typeof data);
-			console.log("- Data length:", data?.length);
-
 			if (error) {
-				console.error("❌ Erro SUPABASE:", {
-					code: error.code,
-					message: error.message,
-					details: error.details,
-					hint: error.hint,
-				});
+				console.error("Erro ao carregar parceiros do gestor:", error);
 				return;
 			}
 
-			console.log("🔍 Analisando dados recebidos...");
-
 			if (data && data.length > 0) {
-				console.log(
-					`✅ Encontrados ${data.length} registros na tabela gestor_parceiros`,
-				);
-
-				// Verificar estrutura dos dados
-				console.log("Estrutura do primeiro registro:", data[0]);
-				console.log("Tem parceiro_id?", "parceiro_id" in data[0]);
-				console.log("Tem profiles?", "profiles" in data[0]);
-				console.log("Profiles é:", data[0].profiles);
-
-				const parceiros = data.map((p: any) => {
-					console.log("Processando registro:", p);
-					return {
-						id: p.profiles.id,
-						name: p.profiles.name,
-						email: p.profiles.email,
-					};
-				});
-
-				console.log(
-					`✅ ${parceiros.length} parceiros mapeados:`,
-					parceiros,
-				);
+				const parceiros = data.map((p: any) => ({
+					id: p.profiles.id,
+					name: p.profiles.name,
+					email: p.profiles.email,
+				}));
 				setParceirosDoGestor(parceiros);
 			} else {
-				console.log("⚠️ Nenhum dado retornado ou array vazio");
-				console.log("Data é null?", data === null);
-				console.log("Data é undefined?", data === undefined);
-				console.log(
-					"Data é array vazio?",
-					Array.isArray(data) && data.length === 0,
-				);
 				setParceirosDoGestor([]);
 			}
 		} catch (err) {
-			console.error("Erro CATCH:", err);
+			console.error("Erro ao carregar parceiros do gestor:", err);
 		}
 	};
 
 	const loadClientes = async (userRole?: string, userId?: string) => {
 		try {
-			console.log(`Carregando clientes para ${userRole} (ID: ${userId})`);
 
 			let query = supabase.from("clientes").select("*");
 
@@ -525,15 +620,11 @@ export default function ClientesPage() {
 			});
 
 			if (error) {
-				console.error("❌ Erro ao carregar clientes:", error);
+				console.error("Erro ao carregar clientes:", error);
 				setClientes([]);
 				setFilteredClientes([]);
 				return;
 			}
-
-			console.log(
-				`${data?.length || 0} clientes carregados para ${userRole}`,
-			);
 
 			const clientesComInfo = await carregarInfosResponsaveis(data || []);
 			setClientes(clientesComInfo);
@@ -560,7 +651,7 @@ export default function ClientesPage() {
 				.eq("gestor_id", gestorId);
 
 			if (error) {
-				console.error("❌ Erro ao buscar parceiros do gestor:", error);
+				console.error("Erro ao buscar parceiros do gestor:", error);
 				return [];
 			}
 
@@ -584,7 +675,7 @@ export default function ClientesPage() {
 
 			return clientes.map((c) => c.id);
 		} catch (err) {
-			console.error("❌ Erro inesperado em getClienteIdsDoGestor:", err);
+			console.error("Erro inesperado em getClienteIdsDoGestor:", err);
 			return [];
 		}
 	};
@@ -610,7 +701,7 @@ export default function ClientesPage() {
 				.in("id", Array.from(allProfileIds));
 
 			if (error) {
-				console.error("❌ Erro ao buscar profiles:", error);
+				console.error("Erro ao buscar profiles:", error);
 				return clientes.map((cliente) => ({
 					...cliente,
 					parceiroNome: "",
@@ -876,8 +967,8 @@ export default function ClientesPage() {
 		// Carregar parceiros para gestor ou tenant
 		if (profile?.role === "gestor") {
 			await carregarParceirosDoGestor(profile.id);
-		} else if (profile?.role === "tenant" && profile.tenantId) {
-			await carregarParceirosDoTenant(profile.tenantId);
+		} else if (profile?.role === "tenant") {
+			await carregarParceirosDoTenant(profile.tenantId || profile.id);
 		}
 
 		// Se o cliente já tem um parceiro, selecioná-lo
@@ -890,10 +981,15 @@ export default function ClientesPage() {
 			setParceiroSelecionadoEdicao("");
 		}
 
+		// Carregar observações para o modal de edição
+		if (profile?.role !== "parceiro") {
+			await carregarObservacoes(cliente.id);
+		}
+
 		setModalEditarOpen(true);
 	};
 
-	const handleAdicionarCliente = () => {
+	const handleAdicionarCliente = async () => {
 		setNovoCliente({
 			name: "",
 			email: "",
@@ -906,6 +1002,14 @@ export default function ClientesPage() {
 			dataFimContrato: "",
 		});
 		setParceiroSelecionado("");
+
+		// Recarregar parceiros para garantir que a lista está actualizada
+		if (profile?.role === "gestor") {
+			await carregarParceirosDoGestor(profile.id);
+		} else if (profile?.role === "tenant") {
+			await carregarParceirosDoTenant(profile.tenantId || profile.id);
+		}
+
 		setModalAdicionarOpen(true);
 	};
 
@@ -1015,10 +1119,26 @@ export default function ClientesPage() {
 
 			// LÓGICA BASEADA NA ROLE DO USUÁRIO
 			if (profile.role === "tenant") {
-				// TENANT cria cliente para si mesmo (sem profileId)
+				// TENANT cria cliente
 				dadosCliente.profileId = null;
-				dadosCliente.responsavelId = null;
 				dadosCliente.tenantId = profile.id; // Tenant é seu próprio tenant
+
+				// Se selecionou um parceiro para atribuir
+				if (parceiroSelecionado) {
+					const parceiroValido = parceirosDoGestor.find(
+						(p) => p.id === parceiroSelecionado,
+					);
+
+					if (parceiroValido) {
+						dadosCliente.responsavelId = parceiroSelecionado;
+					} else {
+						alert("Este parceiro não está disponível");
+						setAdicionandoLoading(false);
+						return;
+					}
+				} else {
+					dadosCliente.responsavelId = null; // Gerir pessoalmente
+				}
 			} else if (profile.role === "gestor") {
 				// GESTOR sempre é o profileId
 				dadosCliente.profileId = profile.id;
@@ -1102,6 +1222,56 @@ export default function ClientesPage() {
 			alert(`Erro ao criar cliente: ${err.message || "Tente novamente"}`);
 		} finally {
 			setAdicionandoLoading(false);
+		}
+	};
+
+	const handleCriarParceiro = async () => {
+		if (!profile || profile.role !== "tenant") return;
+
+		if (!novoParceiro.name || !novoParceiro.email || !novoParceiro.password) {
+			alert("Nome, email e palavra-passe são obrigatórios");
+			return;
+		}
+
+		if (novoParceiro.password.length < 6) {
+			alert("A palavra-passe deve ter pelo menos 6 caracteres");
+			return;
+		}
+
+		setCriandoParceiro(true);
+
+		try {
+			const response = await fetch("/api/auth/create-parceiro", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(novoParceiro),
+			});
+
+			const result = await response.json();
+
+			if (!response.ok) {
+				throw new Error(result.error || "Erro ao criar parceiro");
+			}
+
+			// Recarregar lista de parceiros
+			await carregarParceirosDoTenant(profile.id);
+
+			setModalAdicionarParceiroOpen(false);
+			setNovoParceiro({
+				name: "",
+				email: "",
+				password: "",
+				telefone: "",
+				endereco: "",
+				localidade: "",
+				codigoPostal: "",
+			});
+			alert("Parceiro criado com sucesso!");
+		} catch (err: any) {
+			console.error("Erro ao criar parceiro:", err);
+			alert(err.message || "Erro ao criar parceiro. Tente novamente.");
+		} finally {
+			setCriandoParceiro(false);
 		}
 	};
 
@@ -1459,7 +1629,7 @@ export default function ClientesPage() {
 							</p>
 						</div>
 
-						<div className="flex items-center gap-3">
+						<div className="flex items-center flex-wrap justify-end gap-2">
 							{podeAdicionarCliente && (
 								<button
 									type="button"
@@ -1468,6 +1638,29 @@ export default function ClientesPage() {
 								>
 									<Plus size={18} />
 									Adicionar Cliente
+								</button>
+							)}
+							{profile?.role === "tenant" && (
+								<button
+									type="button"
+									onClick={() => setModalAdicionarParceiroOpen(true)}
+									className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+								>
+									<UserPlus size={18} />
+									Adicionar Parceiro
+								</button>
+							)}
+							{(profile?.role === "tenant" || profile?.role === "gestor") && (
+								<button
+									type="button"
+									onClick={() => {
+										setModalGerirParceirosOpen(true);
+										carregarDadosGerirParceiros();
+									}}
+									className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+								>
+									<Link2 size={18} />
+									Gerir Parceiros
 								</button>
 							)}
 							<button
@@ -2063,12 +2256,12 @@ export default function ClientesPage() {
 										}}
 										className="space-y-6"
 									>
-										{profile?.role === "gestor" && (
+										{(profile?.role === "gestor" || profile?.role === "tenant") && (
 											<div className="space-y-4">
 												<div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
 													<h4 className="font-medium text-blue-800 flex items-center gap-2">
 														<Users size={16} />
-														Atribuir a Parceiro
+														Parceiro Responsável
 														(Opcional)
 													</h4>
 													<p className="text-sm text-blue-600 mt-1">
@@ -2077,15 +2270,6 @@ export default function ClientesPage() {
 														ou deixe em branco para
 														gerir pessoalmente
 													</p>
-
-													{/* LOG DE DEBUG ADICIONADO */}
-													<div className="text-xs text-gray-500 mb-2">
-														Debug:{" "}
-														{
-															parceirosDoGestor.length
-														}{" "}
-														parceiros carregados
-													</div>
 
 													<div className="mt-3">
 														<label
@@ -2132,46 +2316,14 @@ export default function ClientesPage() {
 															)}
 														</select>
 
-														{/* LOG DOS PARCEIROS ADICIONADO */}
-														<div className="mt-2 text-xs text-gray-500">
-															Parceiros
-															disponíveis:{" "}
-															{
-																parceirosDoGestor.length
-															}
-															{parceirosDoGestor.length >
-																0 && (
-																<ul className="mt-1">
-																	{parceirosDoGestor.map(
-																		(p) => (
-																			<li
-																				key={
-																					p.id
-																				}
-																			>
-																				-{" "}
-																				{
-																					p.name
-																				}{" "}
-																				(
-																				{
-																					p.email
-																				}
-																				)
-																			</li>
-																		),
-																	)}
-																</ul>
-															)}
-														</div>
-
 														{parceirosDoGestor.length ===
 															0 && (
 															<p className="text-sm text-gray-500 mt-2">
 																Não tem parceiros
 																associados.
-																Contacte o
-																administrador.
+																{profile?.role === "gestor"
+																	? " Contacte o administrador."
+																	: " Crie um parceiro primeiro."}
 															</p>
 														)}
 													</div>
@@ -2866,82 +3018,13 @@ export default function ClientesPage() {
 										</div>
 									</div>
 
-									{/* SEÇÃO DE OBSERVAÇÕES */}
+									{/* Observações: visíveis em modo leitura (sem formulário de adicionar) */}
+									{profile?.role !== "parceiro" && (
 									<div className="mt-8">
 										<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
 											<FileText className="w-5 h-5 text-gray-600" />
 											Observações do Cliente
 										</h3>
-
-										{/* Mostrar campo para adicionar observação APENAS para tenant e gestor */}
-										{profile?.role !== "parceiro" && (
-											<div className="mb-6">
-												<div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
-													<label
-														htmlFor="nova-observacao-detalhes"
-														className="block text-sm font-medium text-blue-800 mb-2"
-													>
-														Adicionar Nova
-														Observação
-													</label>
-													<textarea
-														id="nova-observacao-detalhes"
-														value={novaObservacao}
-														onChange={(e) =>
-															setNovaObservacao(
-																e.target.value,
-															)
-														}
-														className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[80px]"
-														placeholder="Escreva a sua observação aqui..."
-														rows={3}
-													/>
-													<div className="flex justify-between items-center mt-3">
-														<p className="text-xs text-blue-600">
-															Esta observação será
-															registada com o seu
-															nome e data
-														</p>
-														<button
-															type="button"
-															onClick={() => {
-																if (
-																	selectedCliente &&
-																	novaObservacao.trim()
-																) {
-																	adicionarObservacao(
-																		selectedCliente.id,
-																		novaObservacao,
-																	);
-																}
-															}}
-															disabled={
-																!novaObservacao.trim() ||
-																adicionandoObservacao
-															}
-															className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-														>
-															{adicionandoObservacao ? (
-																<>
-																	<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-																	Adicionando...
-																</>
-															) : (
-																<>
-																	<Plus
-																		size={
-																			16
-																		}
-																	/>
-																	Adicionar
-																	Observação
-																</>
-															)}
-														</button>
-													</div>
-												</div>
-											</div>
-										)}
 
 										{carregandoObservacoes ? (
 											<div className="flex items-center justify-center py-8">
@@ -2954,7 +3037,6 @@ export default function ClientesPage() {
 														key={obs.id}
 														className="bg-white p-4 rounded-lg border border-gray-200"
 													>
-														{/* CABEÇALHO COM INFO DO AUTOR */}
 														<div className="flex justify-between items-start mb-3">
 															<div className="flex items-center gap-2">
 																<div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
@@ -2962,37 +3044,19 @@ export default function ClientesPage() {
 																</div>
 																<div>
 																	<p className="font-medium text-gray-800">
-																		{
-																			obs.profile_nome
-																		}
+																		{obs.profile_nome}
 																	</p>
 																	<p className="text-xs text-gray-500 capitalize">
-																		{
-																			obs.profile_role
-																		}
+																		{obs.profile_role}
 																	</p>
 																</div>
 															</div>
 															<span className="text-xs text-gray-500">
-																{new Date(
-																	obs.createdAt,
-																).toLocaleDateString(
-																	"pt-PT",
-																)}
+																{new Date(obs.createdAt).toLocaleDateString("pt-PT")}
 																<br />
-																{new Date(
-																	obs.createdAt,
-																).toLocaleTimeString(
-																	"pt-PT",
-																	{
-																		hour: "2-digit",
-																		minute: "2-digit",
-																	},
-																)}
+																{new Date(obs.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
 															</span>
 														</div>
-
-														{/* OBSERVAÇÃO EM SI */}
 														<div className="bg-gray-50 p-3 rounded">
 															<p className="text-gray-700 whitespace-pre-wrap">
 																{obs.texto}
@@ -3007,17 +3071,15 @@ export default function ClientesPage() {
 													<FileText className="w-12 h-12 mx-auto" />
 												</div>
 												<p className="text-lg font-medium text-gray-700">
-													Nenhuma observação
-													registada
+													Nenhuma observação registada
 												</p>
 												<p className="text-gray-500 mt-1">
-													Seja o primeiro a adicionar
-													uma observação sobre este
-													cliente
+													Edite o cliente para adicionar observações
 												</p>
 											</div>
 										)}
 									</div>
+									)}
 
 									<div className="mt-8 bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
 										<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
@@ -3079,17 +3141,19 @@ export default function ClientesPage() {
 
 							<div className="border-t border-gray-200 p-4 bg-gray-50">
 								<div className="flex items-center justify-between">
-									<div className="text-sm text-gray-500">
-										Cliente registado há{" "}
-										{Math.floor(
-											(Date.now() -
-												new Date(
-													selectedCliente.createdAt,
-												).getTime()) /
-												(1000 * 60 * 60 * 24),
-										)}{" "}
-										dias • {observacoes.length} observações
-									</div>
+									{profile?.role !== "parceiro" && (
+										<div className="text-sm text-gray-500">
+											Cliente registado há{" "}
+											{Math.floor(
+												(Date.now() -
+													new Date(
+														selectedCliente.createdAt,
+													).getTime()) /
+													(1000 * 60 * 60 * 24),
+											)}{" "}
+											dias • {observacoes.length} observações
+										</div>
+									)}
 									<div className="flex items-center gap-3">
 										{/* Mostrar botões de editar e excluir APENAS para tenant e gestor */}
 										{profile?.role !== "parceiro" && (
@@ -3325,57 +3389,7 @@ export default function ClientesPage() {
 													</div>
 												</div>
 
-												{/* Campo para adicionar observação durante edição - APENAS para tenant e gestor */}
-												{profile?.role !==
-													"parceiro" && (
-													<div className="bg-gray-50 p-4 rounded-xl">
-														<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
-															<FileText className="w-5 h-5 text-gray-600" />
-															Adicionar Observação
-															(Opcional)
-														</h3>
-														<div className="space-y-4">
-															<div>
-																<label
-																	htmlFor="observacao-edicao"
-																	className="block text-sm font-medium text-gray-700 mb-1"
-																>
-																	Nova
-																	observação
-																	sobre
-																	alterações
-																</label>
-																<textarea
-																	id="observacao-edicao"
-																	value={
-																		novaObservacao
-																	}
-																	onChange={(
-																		e,
-																	) =>
-																		setNovaObservacao(
-																			e
-																				.target
-																				.value,
-																		)
-																	}
-																	className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[100px]"
-																	placeholder="Descreva as alterações feitas ou adicione uma observação..."
-																	rows={3}
-																/>
-																<p className="text-xs text-gray-500 mt-1">
-																	Esta
-																	observação
-																	será
-																	registada
-																	juntamente com
-																	as alterações
-																</p>
-															</div>
-														</div>
-													</div>
-												)}
-											</div>
+												</div>
 
 											<div className="space-y-6">
 												<div className="bg-gray-50 p-4 rounded-xl">
@@ -3638,6 +3652,13 @@ export default function ClientesPage() {
 																<option value="">
 																	Sem parceiro
 																</option>
+																{/* Mostrar parceiro actual mesmo que não esteja na lista de gestor_parceiros */}
+																{clienteEditando.responsavelId &&
+																	!parceirosDoGestor.some((p) => p.id === clienteEditando.responsavelId) && (
+																		<option value={clienteEditando.responsavelId}>
+																			{clienteEditando.parceiroNome || "Parceiro actual"} (actual)
+																		</option>
+																	)}
 																{parceirosDoGestor.map(
 																	(
 																		parceiro,
@@ -3730,6 +3751,166 @@ export default function ClientesPage() {
 											</div>
 										</div>
 									</form>
+
+									{/* SEÇÃO DE OBSERVAÇÕES — no modo edição */}
+									{profile?.role !== "parceiro" && (
+										<div className="mt-6">
+											<h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-4">
+												<FileText className="w-5 h-5 text-gray-600" />
+												Observações do Cliente
+											</h3>
+
+											{/* Formulário para adicionar observação */}
+											<div className="mb-6">
+												<div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+													<label
+														htmlFor="nova-observacao-edicao"
+														className="block text-sm font-medium text-blue-800 mb-2"
+													>
+														Adicionar Nova Observação
+													</label>
+													<textarea
+														id="nova-observacao-edicao"
+														value={novaObservacao}
+														onChange={(e) => setNovaObservacao(e.target.value)}
+														className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[80px]"
+														placeholder="Escreva a sua observação aqui..."
+														rows={3}
+													/>
+													<div className="flex justify-between items-center mt-3">
+														<p className="text-xs text-blue-600">
+															Esta observação será registada com o seu nome e data
+														</p>
+														<button
+															type="button"
+															onClick={() => {
+																if (clienteEditando && novaObservacao.trim()) {
+																	adicionarObservacao(clienteEditando.id, novaObservacao);
+																}
+															}}
+															disabled={!novaObservacao.trim() || adicionandoObservacao}
+															className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+														>
+															{adicionandoObservacao ? (
+																<>
+																	<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+																	A adicionar...
+																</>
+															) : (
+																<>
+																	<Plus size={16} />
+																	Adicionar Observação
+																</>
+															)}
+														</button>
+													</div>
+												</div>
+											</div>
+
+											{/* Lista de observações existentes */}
+											{carregandoObservacoes ? (
+												<div className="flex items-center justify-center py-8">
+													<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+												</div>
+											) : observacoes.length > 0 ? (
+												<div className="space-y-4 max-h-80 overflow-y-auto pr-2">
+													{observacoes.map((obs) => (
+														<div
+															key={obs.id}
+															className="bg-white p-4 rounded-lg border border-gray-200"
+														>
+															<div className="flex justify-between items-start mb-3">
+																<div className="flex items-center gap-2">
+																	<div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+																		<UserIcon className="w-4 h-4 text-blue-600" />
+																	</div>
+																	<div>
+																		<p className="font-medium text-gray-800">
+																			{obs.profile_nome}
+																		</p>
+																		<p className="text-xs text-gray-500 capitalize">
+																			{obs.profile_role}
+																		</p>
+																	</div>
+																</div>
+																<div className="flex items-center gap-3">
+																	<span className="text-xs text-gray-500 text-right">
+																		{new Date(obs.createdAt).toLocaleDateString("pt-PT")}
+																		<br />
+																		{new Date(obs.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
+																	</span>
+																	<button
+																		type="button"
+																		onClick={() => setObservacaoParaEliminar(obs.id)}
+																		className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+																		title="Eliminar observação"
+																	>
+																		<Trash2 size={14} />
+																	</button>
+																</div>
+															</div>
+															<div className="bg-gray-50 p-3 rounded">
+																<p className="text-gray-700 whitespace-pre-wrap">
+																	{obs.texto}
+																</p>
+															</div>
+														</div>
+													))}
+												</div>
+											) : (
+												<div className="bg-gray-50 p-6 rounded-xl border border-gray-200 text-center">
+													<div className="text-gray-400 mb-2">
+														<FileText className="w-10 h-10 mx-auto" />
+													</div>
+													<p className="text-gray-700 font-medium">
+														Nenhuma observação registada
+													</p>
+												</div>
+											)}
+
+											{/* Modal de confirmação para eliminar observação */}
+											{observacaoParaEliminar && (
+												<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+													<div className="bg-white rounded-xl p-6 max-w-sm mx-4 shadow-xl">
+														<h4 className="text-lg font-semibold text-gray-800 mb-2">
+															Eliminar Observação
+														</h4>
+														<p className="text-gray-600 mb-6">
+															Tem a certeza que pretende eliminar esta observação? Esta ação não pode ser revertida.
+														</p>
+														<div className="flex justify-end gap-3">
+															<button
+																type="button"
+																onClick={() => setObservacaoParaEliminar(null)}
+																disabled={eliminandoObservacao}
+																className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+															>
+																Cancelar
+															</button>
+															<button
+																type="button"
+																onClick={() => eliminarObservacao(observacaoParaEliminar)}
+																disabled={eliminandoObservacao}
+																className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors flex items-center gap-2 disabled:opacity-50"
+															>
+																{eliminandoObservacao ? (
+																	<>
+																		<div className="w-4 h-4 border-2 border-red-700 border-t-transparent rounded-full animate-spin" />
+																		A eliminar...
+																	</>
+																) : (
+																	<>
+																		<Trash2 size={14} />
+																		Eliminar
+																	</>
+																)}
+															</button>
+														</div>
+													</div>
+												</div>
+											)}
+										</div>
+									)}
 								</div>
 							</div>
 
@@ -3751,20 +3932,7 @@ export default function ClientesPage() {
 										</button>
 										<button
 											type="button"
-											onClick={async () => {
-												// Se houver observação, adiciona antes de salvar (apenas para tenant e gestor)
-												if (
-													novaObservacao.trim() &&
-													profile?.role !== "parceiro"
-												) {
-													await adicionarObservacao(
-														clienteEditando.id,
-														novaObservacao,
-													);
-												}
-												// Depois salva as alterações do cliente
-												await handleSalvarEdicao();
-											}}
+											onClick={() => handleSalvarEdicao()}
 											disabled={editandoLoading}
 											className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
 										>
@@ -3781,6 +3949,437 @@ export default function ClientesPage() {
 											)}
 										</button>
 									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</>
+			)}
+
+			{/* Modal Adicionar Parceiro */}
+			{modalAdicionarParceiroOpen && (
+				<>
+					<div
+						className="fixed inset-0 bg-black/50 z-50"
+						onClick={() => setModalAdicionarParceiroOpen(false)}
+						onKeyDown={(e) => {
+							if (e.key === "Escape") setModalAdicionarParceiroOpen(false);
+						}}
+						role="button"
+						tabIndex={0}
+						aria-label="Fechar modal"
+					/>
+					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+						<div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+							<div className="p-6">
+								<div className="flex items-center justify-between mb-6">
+									<h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+										<UserPlus className="w-5 h-5 text-purple-600" />
+										Adicionar Parceiro
+									</h2>
+									<button
+										type="button"
+										onClick={() => setModalAdicionarParceiroOpen(false)}
+										className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+									>
+										<X size={20} />
+									</button>
+								</div>
+
+								<form
+									onSubmit={(e) => {
+										e.preventDefault();
+										handleCriarParceiro();
+									}}
+									className="space-y-4"
+								>
+									<div>
+										<label
+											htmlFor="parceiro-nome"
+											className="block text-sm font-medium text-gray-700 mb-1"
+										>
+											Nome *
+										</label>
+										<input
+											id="parceiro-nome"
+											type="text"
+											value={novoParceiro.name}
+											onChange={(e) =>
+												setNovoParceiro({
+													...novoParceiro,
+													name: e.target.value,
+												})
+											}
+											className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+											required
+											placeholder="Nome do parceiro"
+										/>
+									</div>
+
+									<div>
+										<label
+											htmlFor="parceiro-email"
+											className="block text-sm font-medium text-gray-700 mb-1"
+										>
+											Email *
+										</label>
+										<input
+											id="parceiro-email"
+											type="email"
+											value={novoParceiro.email}
+											onChange={(e) =>
+												setNovoParceiro({
+													...novoParceiro,
+													email: e.target.value,
+												})
+											}
+											className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+											required
+											placeholder="parceiro@exemplo.com"
+										/>
+									</div>
+
+									<div>
+										<label
+											htmlFor="parceiro-password"
+											className="block text-sm font-medium text-gray-700 mb-1"
+										>
+											Palavra-passe *
+										</label>
+										<input
+											id="parceiro-password"
+											type="password"
+											value={novoParceiro.password}
+											onChange={(e) =>
+												setNovoParceiro({
+													...novoParceiro,
+													password: e.target.value,
+												})
+											}
+											className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+											required
+											minLength={6}
+											placeholder="Mínimo 6 caracteres"
+										/>
+										<p className="text-xs text-gray-500 mt-1">
+											O parceiro utilizará esta palavra-passe para fazer login
+										</p>
+									</div>
+
+									<div>
+										<label
+											htmlFor="parceiro-telefone"
+											className="block text-sm font-medium text-gray-700 mb-1"
+										>
+											Telefone
+										</label>
+										<input
+											id="parceiro-telefone"
+											type="tel"
+											value={novoParceiro.telefone}
+											onChange={(e) =>
+												setNovoParceiro({
+													...novoParceiro,
+													telefone: e.target.value,
+												})
+											}
+											className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+											placeholder="+351 900 000 000"
+										/>
+									</div>
+
+									<div>
+										<label
+											htmlFor="parceiro-endereco"
+											className="block text-sm font-medium text-gray-700 mb-1"
+										>
+											Endereço
+										</label>
+										<input
+											id="parceiro-endereco"
+											type="text"
+											value={novoParceiro.endereco}
+											onChange={(e) =>
+												setNovoParceiro({
+													...novoParceiro,
+													endereco: e.target.value,
+												})
+											}
+											className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+											placeholder="Rua, número, andar"
+										/>
+									</div>
+
+									<div className="grid grid-cols-2 gap-4">
+										<div>
+											<label
+												htmlFor="parceiro-localidade"
+												className="block text-sm font-medium text-gray-700 mb-1"
+											>
+												Localidade
+											</label>
+											<input
+												id="parceiro-localidade"
+												type="text"
+												value={novoParceiro.localidade}
+												onChange={(e) =>
+													setNovoParceiro({
+														...novoParceiro,
+														localidade: e.target.value,
+													})
+												}
+												className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+												placeholder="Lisboa"
+											/>
+										</div>
+
+										<div>
+											<label
+												htmlFor="parceiro-codigo-postal"
+												className="block text-sm font-medium text-gray-700 mb-1"
+											>
+												Código Postal
+											</label>
+											<input
+												id="parceiro-codigo-postal"
+												type="text"
+												value={novoParceiro.codigoPostal}
+												onChange={(e) =>
+													setNovoParceiro({
+														...novoParceiro,
+														codigoPostal: e.target.value,
+													})
+												}
+												className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+												placeholder="1000-001"
+											/>
+										</div>
+									</div>
+
+									<div className="flex justify-end gap-3 pt-4 border-t">
+										<button
+											type="button"
+											onClick={() => setModalAdicionarParceiroOpen(false)}
+											className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+										>
+											Cancelar
+										</button>
+										<button
+											type="submit"
+											disabled={criandoParceiro}
+											className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+										>
+											{criandoParceiro ? (
+												<>
+													<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+													A criar...
+												</>
+											) : (
+												<>
+													<UserPlus size={16} />
+													Criar Parceiro
+												</>
+											)}
+										</button>
+									</div>
+								</form>
+							</div>
+						</div>
+					</div>
+				</>
+			)}
+
+			{/* Modal Gerir Parceiros (associações gestor ↔ parceiro) */}
+			{modalGerirParceirosOpen && (
+				<>
+					<div
+						className="fixed inset-0 bg-black/50 z-50"
+						onClick={() => setModalGerirParceirosOpen(false)}
+						onKeyDown={(e) => {
+							if (e.key === "Escape") setModalGerirParceirosOpen(false);
+						}}
+						role="button"
+						tabIndex={0}
+						aria-label="Fechar modal"
+					/>
+					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+						<div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+							<div className="p-6">
+								<div className="flex items-center justify-between mb-6">
+									<h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+										<Link2 className="w-5 h-5 text-indigo-600" />
+										Gerir Associações de Parceiros
+									</h2>
+									<button
+										type="button"
+										onClick={() => setModalGerirParceirosOpen(false)}
+										className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+									>
+										<X size={20} />
+									</button>
+								</div>
+
+								{carregandoAssociacoes ? (
+									<div className="flex items-center justify-center py-12">
+										<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+									</div>
+								) : (
+									<>
+										{/* Formulário para adicionar associação */}
+										<div className="bg-indigo-50 p-4 rounded-xl border border-indigo-200 mb-6">
+											<h3 className="text-sm font-semibold text-indigo-800 mb-3">
+												Adicionar Associação
+											</h3>
+											<div className="flex flex-col sm:flex-row gap-3">
+												{/* Dropdown Gestor */}
+												{profile?.role === "tenant" ? (
+													<div className="flex-1">
+														<label htmlFor="assoc-gestor" className="block text-xs font-medium text-gray-600 mb-1">
+															Gestor
+														</label>
+														<select
+															id="assoc-gestor"
+															value={gestorSelecionadoAssoc}
+															onChange={(e) => {
+																setGestorSelecionadoAssoc(e.target.value);
+																setParceiroSelecionadoAssoc("");
+															}}
+															className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+														>
+															<option value="">Seleccionar gestor...</option>
+															{gestoresDoTenant.map((g) => (
+																<option key={g.id} value={g.id}>
+																	{g.name} ({g.email})
+																</option>
+															))}
+														</select>
+													</div>
+												) : (
+													<div className="flex-1">
+														<label className="block text-xs font-medium text-gray-600 mb-1">
+															Gestor
+														</label>
+														<div className="px-3 py-2 bg-gray-100 border rounded-lg text-sm text-gray-700">
+															{profile?.name} (você)
+														</div>
+													</div>
+												)}
+
+												{/* Dropdown Parceiro (filtrado) */}
+												<div className="flex-1">
+													<label htmlFor="assoc-parceiro" className="block text-xs font-medium text-gray-600 mb-1">
+														Parceiro
+													</label>
+													<select
+														id="assoc-parceiro"
+														value={parceiroSelecionadoAssoc}
+														onChange={(e) => setParceiroSelecionadoAssoc(e.target.value)}
+														disabled={!gestorSelecionadoAssoc && profile?.role === "tenant"}
+														className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+													>
+														<option value="">Seleccionar parceiro...</option>
+														{todosParceirosTenant
+															.filter((p) => {
+																const gestorId = profile?.role === "gestor" ? profile.id : gestorSelecionadoAssoc;
+																return !associacoes.some(
+																	(a) => a.gestor_id === gestorId && a.parceiro_id === p.id,
+																);
+															})
+															.map((p) => (
+																<option key={p.id} value={p.id}>
+																	{p.name} ({p.email})
+																</option>
+															))}
+													</select>
+												</div>
+
+												{/* Botão Associar */}
+												<div className="flex items-end">
+													<button
+														type="button"
+														onClick={adicionarAssociacao}
+														disabled={
+															!parceiroSelecionadoAssoc ||
+															(profile?.role === "tenant" && !gestorSelecionadoAssoc)
+														}
+														className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+													>
+														<Plus size={14} />
+														Associar
+													</button>
+												</div>
+											</div>
+										</div>
+
+										{/* Lista de associações existentes */}
+										<div>
+											<h3 className="text-sm font-semibold text-gray-700 mb-3">
+												Associações Actuais ({associacoes.length})
+											</h3>
+
+											{associacoes.length > 0 ? (
+												<div className="space-y-2 max-h-80 overflow-y-auto">
+													{associacoes.map((assoc) => (
+														<div
+															key={assoc.id}
+															className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
+														>
+															<div className="flex items-center gap-3">
+																<div className="flex items-center gap-2">
+																	<div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center">
+																		<UserIcon className="w-3.5 h-3.5 text-blue-600" />
+																	</div>
+																	<span className="text-sm font-medium text-gray-800">
+																		{assoc.gestor_nome}
+																	</span>
+																</div>
+																<ChevronRight size={14} className="text-gray-400" />
+																<div className="flex items-center gap-2">
+																	<div className="w-7 h-7 bg-purple-100 rounded-full flex items-center justify-center">
+																		<UserIcon className="w-3.5 h-3.5 text-purple-600" />
+																	</div>
+																	<span className="text-sm text-gray-700">
+																		{assoc.parceiro_nome}
+																	</span>
+																</div>
+															</div>
+															<button
+																type="button"
+																onClick={() => removerAssociacao(assoc.id)}
+																className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+																title="Remover associação"
+															>
+																<Trash2 size={14} />
+															</button>
+														</div>
+													))}
+												</div>
+											) : (
+												<div className="bg-gray-50 p-6 rounded-xl border border-gray-200 text-center">
+													<div className="text-gray-400 mb-2">
+														<Link2 className="w-10 h-10 mx-auto" />
+													</div>
+													<p className="text-gray-700 font-medium">
+														Nenhuma associação registada
+													</p>
+													<p className="text-sm text-gray-500 mt-1">
+														Associe parceiros a gestores para que possam atribuí-los aos seus clientes
+													</p>
+												</div>
+											)}
+										</div>
+									</>
+								)}
+
+								{/* Footer */}
+								<div className="flex justify-end pt-4 mt-6 border-t">
+									<button
+										type="button"
+										onClick={() => setModalGerirParceirosOpen(false)}
+										className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+									>
+										Fechar
+									</button>
 								</div>
 							</div>
 						</div>

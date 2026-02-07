@@ -1,6 +1,7 @@
 "use client";
 
 import {
+	AlertTriangle,
 	ChevronRight,
 	LayoutDashboard,
 	LogOut,
@@ -27,6 +28,9 @@ interface Cliente {
 	name: string;
 	email: string;
 	createdAt: string;
+	dataFimContrato: string | null;
+	profileId: string | null;
+	tenantId: string | null;
 }
 
 interface User {
@@ -186,7 +190,7 @@ export default function DashboardPage() {
 		try {
 			const { data, error } = await supabase
 				.from("clientes")
-				.select("status, name, email, createdAt");
+				.select("status, name, email, createdAt, dataFimContrato, profileId, tenantId");
 
 			if (error) {
 				console.error("❌ Erro ao carregar clientes:", error);
@@ -452,6 +456,43 @@ export default function DashboardPage() {
 		return null;
 	}
 
+	// Computar alertas de fidelização
+	const alertasFidelizacao = (() => {
+		if (profile?.role === "parceiro") return [];
+
+		const hoje = new Date();
+		hoje.setHours(0, 0, 0, 0);
+
+		return clientes
+			.filter((c) => {
+				if (!c.dataFimContrato) return false;
+				// Gestor: apenas os seus clientes
+				if (profile?.role === "gestor" && c.profileId !== profile.id) return false;
+				const fim = new Date(c.dataFimContrato);
+				const dias = Math.ceil((fim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+				return dias <= 30; // inclui expirados (negativos) e a expirar
+			})
+			.map((c) => {
+				const fim = new Date(c.dataFimContrato!);
+				const dias = Math.ceil((fim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+				return { ...c, diasRestantes: dias, dataFim: fim };
+			})
+			.sort((a, b) => a.diasRestantes - b.diasRestantes);
+	})();
+
+	const getAlertaClasses = (dias: number) => {
+		if (dias < 0) return { bg: "bg-red-100", text: "text-red-900", badge: "bg-red-200 text-red-900" };
+		if (dias <= 7) return { bg: "bg-red-50", text: "text-red-700", badge: "bg-red-100 text-red-700" };
+		if (dias <= 15) return { bg: "bg-orange-50", text: "text-orange-700", badge: "bg-orange-100 text-orange-700" };
+		return { bg: "bg-yellow-50", text: "text-yellow-700", badge: "bg-yellow-100 text-yellow-700" };
+	};
+
+	const getAlertaLabel = (dias: number) => {
+		if (dias < 0) return `Expirado há ${Math.abs(dias)} dia${Math.abs(dias) !== 1 ? "s" : ""}`;
+		if (dias === 0) return "Expira hoje";
+		return `${dias} dia${dias !== 1 ? "s" : ""}`;
+	};
+
 	// Criar dados filtrados para o gráfico
 	const filteredChartDataForGraph = STATUS_ORDER.map((status) => {
 		const monthlyData = filteredChartData[0];
@@ -659,6 +700,64 @@ export default function DashboardPage() {
 							</p>
 						)}
 					</div>
+
+					{/* Alertas de Fidelização */}
+					{profile?.role !== "parceiro" && (
+						<div className="bg-white p-6 rounded-lg shadow border">
+							<div className="flex items-center gap-2 mb-4">
+								<AlertTriangle className="w-5 h-5 text-amber-500" />
+								<h2 className="text-xl font-semibold text-gray-800">
+									Alertas de Fidelização
+								</h2>
+								{alertasFidelizacao.length > 0 && (
+									<span className="ml-2 px-2 py-0.5 text-xs font-bold rounded-full bg-red-100 text-red-700">
+										{alertasFidelizacao.length}
+									</span>
+								)}
+							</div>
+
+							{alertasFidelizacao.length === 0 ? (
+								<div className="flex items-center gap-2 p-4 bg-green-50 rounded-lg border border-green-200">
+									<span className="text-green-600 text-lg">✓</span>
+									<p className="text-green-700 font-medium">
+										Sem alertas — nenhum contrato a expirar nos próximos 30 dias.
+									</p>
+								</div>
+							) : (
+								<div className="overflow-x-auto">
+									<table className="w-full text-sm">
+										<thead>
+											<tr className="border-b border-gray-200">
+												<th className="text-left py-2 px-3 font-semibold text-gray-600">Nome</th>
+												<th className="text-left py-2 px-3 font-semibold text-gray-600">Data Fim Contrato</th>
+												<th className="text-left py-2 px-3 font-semibold text-gray-600">Estado</th>
+											</tr>
+										</thead>
+										<tbody>
+											{alertasFidelizacao.map((alerta, idx) => {
+												const classes = getAlertaClasses(alerta.diasRestantes);
+												return (
+													<tr key={`${alerta.email}-${idx}`} className={`border-b border-gray-100 ${classes.bg}`}>
+														<td className={`py-2 px-3 font-medium ${classes.text}`}>
+															{alerta.name}
+														</td>
+														<td className={`py-2 px-3 ${classes.text}`}>
+															{alerta.dataFim.toLocaleDateString("pt-PT")}
+														</td>
+														<td className="py-2 px-3">
+															<span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${classes.badge}`}>
+																{getAlertaLabel(alerta.diasRestantes)}
+															</span>
+														</td>
+													</tr>
+												);
+											})}
+										</tbody>
+									</table>
+								</div>
+							)}
+						</div>
+					)}
 
 					{/* Gráfico */}
 					<div className="bg-white p-6 rounded-lg shadow border">
