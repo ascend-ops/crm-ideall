@@ -209,74 +209,66 @@ export default function DashboardPage() {
 	};
 
 	const loadGestoresCards = async (_tenantId: string) => {
-		console.group("🔍 Carregando gestores...");
-
 		try {
+			// Query 1: todos os gestores
 			const { data: teamMembers, error } = await supabase
 				.from("profiles")
 				.select('id, name, email, role, "tenantId"')
-				.in("role", ["gestor", "parceiro"])
-				.order("role", { ascending: false })
+				.eq("role", "gestor")
 				.order("name", { ascending: true });
 
-			if (error) {
-				console.error("❌ Erro ao carregar gestores:", error);
+			if (error || !teamMembers?.length) {
 				setGestoresCards([]);
 				return;
 			}
 
-			console.log(
-				`✅ ${teamMembers?.length || 0} gestores/parceiros encontrados`,
-			);
+			const gestorIds = teamMembers.map((g) => g.id);
 
-			// Filtrar apenas gestores para os cards
-			const gestores =
-				teamMembers?.filter((p) => p.role === "gestor") || [];
+			// Query 2: todos os clientes desses gestores (single query)
+			const { data: todosClientes } = await supabase
+				.from("clientes")
+				.select("status, profileId")
+				.in("profileId", gestorIds);
 
-			// Para cada gestor, buscar seus clientes
-			const gestoresComDados = await Promise.all(
-				gestores.map(async (gestor) => {
-					const { data: clientesGestor } = await supabase
-						.from("clientes")
-						.select("status, id")
-						.eq("profileId", gestor.id);
+			// Agrupar clientes por profileId em memória
+			const clientesPorGestor = new Map<string, { status: string }[]>();
+			(todosClientes || []).forEach((c) => {
+				if (!c.profileId) return;
+				const list = clientesPorGestor.get(c.profileId) || [];
+				list.push(c);
+				clientesPorGestor.set(c.profileId, list);
+			});
 
-					const statusCount = {
-						aprovado: 0,
-						"em análise": 0,
-						"aguarda documentos": 0,
-						reprovado: 0,
-						fidelizado: 0,
-					};
+			const gestoresComDados = teamMembers.map((gestor) => {
+				const clientesGestor = clientesPorGestor.get(gestor.id) || [];
 
-					clientesGestor?.forEach((cliente) => {
-						const status =
-							cliente.status as keyof typeof statusCount;
-						if (status in statusCount) {
-							statusCount[status]++;
-						}
-					});
+				const statusCount = {
+					aprovado: 0,
+					"em análise": 0,
+					"aguarda documentos": 0,
+					reprovado: 0,
+					fidelizado: 0,
+				};
 
-					return {
-						id: gestor.id,
-						name: gestor.name,
-						email: gestor.email,
-						role: gestor.role,
-						totalClientes: clientesGestor?.length || 0,
-						statusCount,
-					};
-				}),
-			);
+				clientesGestor.forEach((cliente) => {
+					const status = cliente.status as keyof typeof statusCount;
+					if (status in statusCount) {
+						statusCount[status]++;
+					}
+				});
+
+				return {
+					id: gestor.id,
+					name: gestor.name,
+					email: gestor.email,
+					totalClientes: clientesGestor.length,
+					statusCount,
+				};
+			});
 
 			setGestoresCards(gestoresComDados);
-			console.log(
-				`🎯 ${gestoresComDados.length} gestores processados com dados`,
-			);
 		} catch (err) {
-			console.error("❌ Erro inesperado:", err);
 			setGestoresCards([]);
-		} finally {
-			console.groupEnd();
 		}
 	};
 

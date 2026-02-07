@@ -157,6 +157,12 @@ export const webhookHandler: WebhookHandler = async (req) => {
 					break;
 				}
 
+				// Idempotency guard: use checkout session ID as subscriptionId
+				const existingCheckout = await getPurchaseBySubscriptionId(id);
+				if (existingCheckout) {
+					break;
+				}
+
 				const checkoutSession =
 					await stripeClient.checkout.sessions.retrieve(id, {
 						expand: ["line_items"],
@@ -171,6 +177,7 @@ export const webhookHandler: WebhookHandler = async (req) => {
 				}
 
 				await createPurchase({
+					subscriptionId: id,
 					organizationId: metadata?.organization_id || null,
 					userId: metadata?.user_id || null,
 					customerId: customer as string,
@@ -194,6 +201,12 @@ export const webhookHandler: WebhookHandler = async (req) => {
 					return new Response("Missing product ID.", {
 						status: 400,
 					});
+				}
+
+				// Idempotency guard: skip if purchase already exists
+				const existingSub = await getPurchaseBySubscriptionId(id);
+				if (existingSub) {
+					break;
 				}
 
 				await createPurchase({
