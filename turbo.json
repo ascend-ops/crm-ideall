@@ -1,7 +1,22 @@
 {
 	"$schema": "https://turbo.build/schema.json",
 	"globalDependencies": ["**/.env.*local"],
-	"globalEnv": ["*"],
+	"globalEnv": [
+		"NEXT_PUBLIC_SITE_URL",
+		"NEXT_PUBLIC_VERCEL_URL",
+		"NEXT_PUBLIC_SUPABASE_URL",
+		"NEXT_PUBLIC_SUPABASE_ANON_KEY",
+		"NEXT_PUBLIC_PRICE_ID_PRO_MONTHLY",
+		"NEXT_PUBLIC_PRICE_ID_PRO_YEARLY",
+		"NEXT_PUBLIC_PRICE_ID_LIFETIME",
+		"NEXT_PUBLIC_AVATARS_BUCKET_NAME",
+		"NEXT_PUBLIC_PIRSCH_CODE",
+		"NEXT_PUBLIC_PLAUSIBLE_URL",
+		"NEXT_PUBLIC_MIXPANEL_TOKEN",
+		"NEXT_PUBLIC_GOOGLE_ANALYTICS_ID",
+		"NEXT_PUBLIC_POSTHOG_KEY",
+		"NEXT_PUBLIC_UMAMI_TRACKING_ID"
+	],
 	"tasks": {
 		"build": {
 			"dependsOn": ["^generate", "^build"],

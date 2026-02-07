@@ -1,4 +1,5 @@
 "use client";
+import { getSafeRedirect } from "../../../../lib/safe-redirect";
 import { authClient } from "@repo/auth/client";
 import { useRouter } from "@shared/hooks/router";
 import { clearCache } from "@shared/lib/cache";
@@ -34,7 +35,7 @@ export function OnboardingForm() {
 		});
 
 		await clearCache();
-		router.replace(redirectTo ?? "/app");
+		router.replace(getSafeRedirect(redirectTo, "/app"));
 	};
 
 	const steps = [

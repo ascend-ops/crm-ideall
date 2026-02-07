@@ -29,6 +29,7 @@ import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { withQuery } from "ufo";
+import { getSafeRedirect } from "../../../../lib/safe-redirect";
 import { z } from "zod";
 import {
 	type OAuthProvider,
@@ -66,7 +67,7 @@ export function SignupForm({ prefillEmail }: { prefillEmail?: string }) {
 
 	const redirectPath = invitationId
 		? `/organization-invitation/${invitationId}`
-		: (redirectTo ?? config.auth.redirectAfterSignIn);
+		: getSafeRedirect(redirectTo, config.auth.redirectAfterSignIn);
 
 	const onSubmit = form.handleSubmit(async ({ email, password, name }) => {
 		try {

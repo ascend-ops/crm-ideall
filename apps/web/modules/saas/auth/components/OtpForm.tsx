@@ -26,6 +26,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
+import { getSafeRedirect } from "../../../../lib/safe-redirect";
 import * as z from "zod";
 
 const formSchema = z.object({
@@ -45,7 +46,7 @@ export function OtpForm() {
 
 	const redirectPath = invitationId
 		? `/organization-invitation/${invitationId}`
-		: (redirectTo ?? config.auth.redirectAfterSignIn);
+		: getSafeRedirect(redirectTo, config.auth.redirectAfterSignIn);
 
 	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
