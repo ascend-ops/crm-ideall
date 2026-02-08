@@ -3,7 +3,13 @@ import { getClienteStatusCounts } from "@repo/database/src/dashboard/queries";
 import { createServerClient } from "../../../lib/supabase/server";
 import { db } from "@repo/database";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
+  if (!process.env.DATABASE_URL) {
+    return NextResponse.json({ error: "not available" }, { status: 503 });
+  }
+
   const supabase = await createServerClient();
   const { data: { session } } = await supabase.auth.getSession();
 
