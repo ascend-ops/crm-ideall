@@ -1,7 +1,10 @@
-import type { ActiveOrganization } from "../auth";
-
 export function isOrganizationAdmin(
-	organization?: ActiveOrganization | null,
+	organization?: {
+		members: Array<{
+			userId: string;
+			role: string;
+		}>;
+	} | null,
 	user?: {
 		id: string;
 		role?: string | null;

@@ -87,7 +87,7 @@ export async function POST(req: Request) {
 		const { data, error } = await serviceSupabase
 			.from("profiles")
 			.upsert(payload, { onConflict: "id" })
-			.select();
+			.select("id, email, name, role, tenantId");
 
 		if (error) {
 			console.error("sync-profile error");

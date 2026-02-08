@@ -147,7 +147,7 @@ export const authClient = {
 				createdAt: Date;
 				metadata?: unknown;
 				members: Array<{ id: string; organizationId: string; userId: string; role: "admin" | "member" | "owner"; createdAt: Date; user: { email: string; name: string; image?: string } }>;
-				invitations: Array<{ id: string; email: string; role: "admin" | "member" | "owner"; organizationId: string; status: "pending" | "accepted" | "rejected"; inviterId: string; expiresAt: Date }>;
+				invitations: Array<{ id: string; email: string; role: "admin" | "member" | "owner"; organizationId: string; status: "pending" | "accepted" | "rejected" | "canceled"; inviterId: string; expiresAt: Date; createdAt?: Date }>;
 			} | null;
 			error: { message: string } | null;
 		}> {

@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { withRateLimit } from "../../../lib/rate-limit";
 
 function getServiceSupabase() {
 	const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -54,6 +55,9 @@ function getSiteUrl() {
 }
 
 export async function POST(req: Request) {
+	const rateLimitResponse = withRateLimit(req, { maxRequests: 10, windowMs: 60_000 });
+	if (rateLimitResponse) return rateLimitResponse;
+
 	try {
 		const authenticatedUser = await getAuthenticatedUser();
 		if (!authenticatedUser) {
@@ -62,10 +66,10 @@ export async function POST(req: Request) {
 
 		const serviceSupabase = getServiceSupabase();
 
-		// Verificar role (tenant ou gestor)
+		// Verificar role (tenant ou gestor) e obter tenantId
 		const { data: profile } = await serviceSupabase
 			.from("profiles")
-			.select("id, role")
+			.select("id, role, tenantId")
 			.eq("email", authenticatedUser.email)
 			.single();
 
@@ -73,16 +77,19 @@ export async function POST(req: Request) {
 			return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
 		}
 
+		const tenantId = profile.tenantId || profile.id;
+
 		const { clienteId } = await req.json();
 		if (!clienteId) {
 			return NextResponse.json({ error: "clienteId obrigatório" }, { status: 400 });
 		}
 
-		// Verificar se o cliente existe
+		// Verificar se o cliente existe E pertence ao tenant
 		const { data: cliente } = await serviceSupabase
 			.from("clientes")
 			.select("id")
 			.eq("id", clienteId)
+			.eq("tenantId", tenantId)
 			.single();
 
 		if (!cliente) {

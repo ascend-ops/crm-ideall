@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
+import { withRateLimit } from "../../../../lib/rate-limit";
 
 function getServiceSupabase() {
 	const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -16,6 +17,9 @@ function getServiceSupabase() {
 }
 
 export async function POST(req: Request) {
+	const rateLimitResponse = withRateLimit(req, { maxRequests: 5, windowMs: 60_000 });
+	if (rateLimitResponse) return rateLimitResponse;
+
 	try {
 		const { token } = await req.json();
 		if (!token) {
@@ -50,11 +54,12 @@ export async function POST(req: Request) {
 
 		const agora = new Date().toISOString();
 
-		// Actualizar consentimento
+		// Actualizar consentimento e invalidar token
 		const { error: updateError } = await serviceSupabase
 			.from("consentimentos")
 			.update({
 				status: "aceite",
+				token: null,
 				aceitoEm: agora,
 				ip,
 				userAgent,

@@ -1,7 +1,7 @@
 "use client";
 
-import type { ActiveOrganization } from "@repo/auth";
 import { authClient } from "@repo/auth/client";
+import type { ClientOrganization } from "@saas/organizations/lib/active-organization-context";
 import { isOrganizationAdmin } from "@repo/auth/lib/helper";
 import { useSession } from "@saas/auth/hooks/use-session";
 import {
@@ -95,7 +95,7 @@ export function OrganizationInvitationsList({
 	};
 
 	const columns: ColumnDef<
-		NonNullable<ActiveOrganization["invitations"]>[number]
+		NonNullable<ClientOrganization["invitations"]>[number]
 	>[] = [
 		{
 			accessorKey: "email",

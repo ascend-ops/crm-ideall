@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 function getServiceSupabase() {
@@ -16,13 +17,22 @@ function getServiceSupabase() {
 
 export async function GET() {
 	try {
+		// Verificar CRON_SECRET
+		const headersList = await headers();
+		const authHeader = headersList.get("authorization");
+		const cronSecret = process.env.CRON_SECRET;
+
+		if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+			return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+		}
+
 		const serviceSupabase = getServiceSupabase();
 		const agora = new Date().toISOString();
 
 		// Buscar consentimentos pendentes expirados
 		const { data: expirados, error: fetchError } = await serviceSupabase
 			.from("consentimentos")
-			.select("id, clienteId")
+			.select("id")
 			.eq("status", "pendente")
 			.lt("expiraEm", agora);
 
@@ -31,7 +41,7 @@ export async function GET() {
 		}
 
 		if (!expirados || expirados.length === 0) {
-			return NextResponse.json({ actualizados: 0, clienteIds: [] });
+			return NextResponse.json({ actualizados: 0 });
 		}
 
 		const ids = expirados.map((c) => c.id);
@@ -46,12 +56,7 @@ export async function GET() {
 			return NextResponse.json({ error: updateError.message }, { status: 500 });
 		}
 
-		const clienteIds = [...new Set(expirados.map((c) => c.clienteId))];
-
-		return NextResponse.json({
-			actualizados: ids.length,
-			clienteIds,
-		});
+		return NextResponse.json({ actualizados: ids.length });
 	} catch (err: any) {
 		return NextResponse.json({ error: err.message || "Erro interno" }, { status: 500 });
 	}

@@ -22,7 +22,7 @@ import {
 	twoFactor,
 	username,
 } from "better-auth/plugins";
-import { passkey } from "better-auth/plugins/passkey";
+import { passkey } from "@better-auth/passkey";
 import { parse as parseCookies } from "cookie";
 import { updateSeatsInOrganizationSubscription } from "./lib/organization";
 import { invitationOnlyPlugin } from "./plugins/invitation-only";
@@ -107,7 +107,7 @@ export const auth = betterAuth({
 						// busca por id
 						try {
 							const rows: any[] = await db.$queryRaw`
-								SELECT *
+								SELECT id, email, role, "tenantId", name
 								FROM profiles
 								WHERE id = ${userId}
 								LIMIT 1
@@ -129,7 +129,7 @@ export const auth = betterAuth({
 					if (!existingProfile && userEmail) {
 						try {
 							const rowsByEmail: any[] = await db.$queryRaw`
-								SELECT *
+								SELECT id, email, role, "tenantId", name
 								FROM profiles
 								WHERE email = ${userEmail}
 								LIMIT 1
@@ -383,8 +383,8 @@ export const auth = betterAuth({
 		passkey(),
 		magicLink({
 			disableSignUp: false,
-			sendMagicLink: async ({ email, url }, request) => {
-				const locale = getLocaleFromRequest(request);
+			sendMagicLink: async ({ email, url }, ctx) => {
+				const locale = getLocaleFromRequest(ctx?.request);
 				await sendEmail({
 					to: email,
 					templateId: "magicLink",
