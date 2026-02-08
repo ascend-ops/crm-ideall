@@ -90,9 +90,15 @@ export type ProfileScalarFieldEnum = z.infer<typeof ProfileScalarFieldEnumSchema
 
 // File: ClienteScalarFieldEnum.schema.ts
 
-export const ClienteScalarFieldEnumSchema = z.enum(['id', 'tenantId', 'profileId', 'name', 'email', 'codigoPostal', 'endereco', 'telefone', 'nif', 'status', 'produto', 'createdAt', 'updatedAt'])
+export const ClienteScalarFieldEnumSchema = z.enum(['id', 'tenantId', 'profileId', 'name', 'email', 'codigoPostal', 'endereco', 'telefone', 'nif', 'status', 'produto', 'consentimentoRGPD', 'consentimentoData', 'createdAt', 'updatedAt'])
 
 export type ClienteScalarFieldEnum = z.infer<typeof ClienteScalarFieldEnumSchema>;
+
+// File: ConsentimentoScalarFieldEnum.schema.ts
+
+export const ConsentimentoScalarFieldEnumSchema = z.enum(['id', 'clienteId', 'token', 'status', 'textoVersao', 'aceitoEm', 'ip', 'userAgent', 'expiraEm', 'tentativas', 'criadoEm', 'updatedAt'])
+
+export type ConsentimentoScalarFieldEnum = z.infer<typeof ConsentimentoScalarFieldEnumSchema>;
 
 // File: SortOrder.schema.ts
 
@@ -355,9 +361,31 @@ export const ClienteSchema = z.object({
   nif: z.string().nullish(),
   status: z.string(),
   produto: z.string(),
+  consentimentoRGPD: z.boolean(),
+  consentimentoData: z.date().nullish(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
 
 export type ClienteType = z.infer<typeof ClienteSchema>;
+
+
+// File: Consentimento.schema.ts
+
+export const ConsentimentoSchema = z.object({
+  id: z.string(),
+  clienteId: z.string(),
+  token: z.string(),
+  status: z.string().default("pendente"),
+  textoVersao: z.string().default("v1.0"),
+  aceitoEm: z.date().nullish(),
+  ip: z.string().nullish(),
+  userAgent: z.string().nullish(),
+  expiraEm: z.date(),
+  tentativas: z.number().int().default(1),
+  criadoEm: z.date(),
+  updatedAt: z.date(),
+});
+
+export type ConsentimentoType = z.infer<typeof ConsentimentoSchema>;
 

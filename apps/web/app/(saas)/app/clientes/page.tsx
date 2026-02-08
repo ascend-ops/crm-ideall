@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { supabase } from "../../../../lib/supabase/client";
 
 interface Cliente {
@@ -47,6 +48,8 @@ interface Cliente {
 	responsavelId: string;
 	tenantId: string;
 	dataFimContrato: string | null;
+	consentimentoRGPD?: boolean;
+	consentimentoData?: string;
 	parceiroNome?: string;
 	parceiroRole?: string;
 	gestorNome?: string;
@@ -1233,12 +1236,64 @@ export default function ClientesPage() {
 			});
 			setParceiroSelecionado("");
 			setNovaObservacao("");
-			alert("Cliente criado com sucesso!");
+
+			// Gerar link de consentimento RGPD
+			try {
+				const res = await fetch("/api/consentimento", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ clienteId: dadosCliente.id }),
+				});
+				if (res.ok) {
+					const { link } = await res.json();
+					try {
+						await navigator.clipboard.writeText(link);
+						toast.success("Cliente criado. Link RGPD copiado!");
+					} catch {
+						toast.success("Cliente criado com sucesso!");
+						prompt("Copie o link RGPD:", link);
+					}
+				} else {
+					const errData = await res.json();
+					console.error("[RGPD] API erro:", res.status, errData);
+					toast.success("Cliente criado com sucesso!");
+				}
+			} catch (err) {
+				console.error("[RGPD] Fetch erro:", err);
+				toast.success("Cliente criado com sucesso!");
+			}
 		} catch (err: any) {
 			console.error("Erro ao criar cliente:", err);
-			alert(`Erro ao criar cliente: ${err.message || "Tente novamente"}`);
+			toast.error(`Erro ao criar cliente: ${err.message || "Tente novamente"}`);
 		} finally {
 			setAdicionandoLoading(false);
+		}
+	};
+
+	const handleCopiarLinkRGPD = async (clienteId: string) => {
+		try {
+			const res = await fetch("/api/consentimento", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ clienteId }),
+			});
+
+			if (!res.ok) {
+				const data = await res.json();
+				toast.error(data.error || "Erro ao gerar link RGPD");
+				return;
+			}
+
+			const { link } = await res.json();
+			try {
+				await navigator.clipboard.writeText(link);
+				toast.success("Link RGPD copiado para a área de transferência");
+			} catch {
+				prompt("Copie o link RGPD:", link);
+			}
+		} catch (err: any) {
+			console.error("[RGPD] Erro cliente:", err);
+			toast.error(err?.message || "Erro ao gerar link RGPD");
 		}
 	};
 
@@ -1939,6 +1994,9 @@ export default function ClientesPage() {
 											Gestor
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+											RGPD
+										</th>
+										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
 											Ações
 										</th>
 									</tr>
@@ -1947,7 +2005,7 @@ export default function ClientesPage() {
 									{paginatedClientes.length === 0 ? (
 										<tr>
 											<td
-												colSpan={11}
+												colSpan={12}
 												className="px-6 py-12 text-center text-gray-500"
 											>
 												<div className="flex flex-col items-center justify-center">
@@ -2026,6 +2084,25 @@ export default function ClientesPage() {
 														{cliente.gestorNome ||
 															"-"}
 													</div>
+												</td>
+												<td className="px-6 py-4 whitespace-nowrap text-center">
+													{cliente.consentimentoRGPD ? (
+														<span
+															title={`Aceite em ${new Date(cliente.consentimentoData!).toLocaleDateString("pt-PT")}`}
+															className="text-green-600 cursor-help font-bold"
+														>
+															&#10003;
+														</span>
+													) : (
+														<button
+															type="button"
+															onClick={() => handleCopiarLinkRGPD(cliente.id)}
+															title="Pendente — clique para copiar link"
+															className="text-red-500 hover:text-red-700 font-bold transition-colors"
+														>
+															&#10005;
+														</button>
+													)}
 												</td>
 												<td className="px-6 py-4 whitespace-nowrap">
 													<div className="flex items-center gap-2">
@@ -3055,6 +3132,31 @@ export default function ClientesPage() {
 													</div>
 												</div>
 											</div>
+										</div>
+									</div>
+
+									{/* RGPD Consent */}
+									<div className="mt-6 p-4 rounded-lg border border-[#e2e8f0] bg-[#f8fafc]">
+										<div className="flex items-center justify-between">
+											<div>
+												<p className="text-sm font-semibold text-[#334155]">Consentimento RGPD</p>
+												{selectedCliente.consentimentoRGPD ? (
+													<p className="text-sm text-green-600 mt-1">
+														Aceite em {new Date(selectedCliente.consentimentoData!).toLocaleDateString("pt-PT")}
+													</p>
+												) : (
+													<p className="text-sm text-red-500 mt-1">Pendente</p>
+												)}
+											</div>
+											{!selectedCliente.consentimentoRGPD && profile?.role !== "parceiro" && (
+												<button
+													type="button"
+													onClick={() => handleCopiarLinkRGPD(selectedCliente.id)}
+													className="px-3 py-1.5 text-sm font-medium bg-white border border-[#e2e8f0] text-[#334155] rounded-lg hover:bg-[#f8fafc] hover:border-[#cbd5e1] transition-colors"
+												>
+													Copiar link RGPD
+												</button>
+											)}
 										</div>
 									</div>
 

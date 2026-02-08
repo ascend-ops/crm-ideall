@@ -253,23 +253,48 @@ model Profile {
 }
 
 model Cliente {
-  id             String    @id @default(cuid())
-  tenantId       String
-  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  profileId      String?   // vincula a gestor/parceiro
-  profile        Profile?  @relation(fields: [profileId], references: [id], onDelete: SetNull)
-  name           String
-  email          String?
-  codigoPostal   String?
-  endereco       String?
-  telefone       String?
-  nif            String?
-  status         String    // aprovado, negado, em análise, aguardando documentos, fidelizado
-  produto        String    // internet ou energia
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                  String          @id @default(cuid())
+  tenantId            String
+  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  profileId           String?         // vincula a gestor/parceiro
+  profile             Profile?        @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  name                String
+  email               String?
+  codigoPostal        String?
+  endereco            String?
+  telefone            String?
+  nif                 String?
+  status              String          // aprovado, negado, em análise, aguardando documentos, fidelizado
+  produto             String          // internet ou energia
+  consentimentoRGPD   Boolean         @default(false)
+  consentimentoData   DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  consentimentos      Consentimento[]
 
   @@index([tenantId])
   @@index([profileId])
   @@map("clientes")
+}
+
+model Consentimento {
+  id            String    @id @default(uuid())
+  clienteId     String
+  token         String    @unique
+  status        String    @default("pendente") // pendente | aceite | expirado | revogado
+  textoVersao   String    @default("v1.0")
+  aceitoEm      DateTime?
+  ip            String?
+  userAgent     String?
+  expiraEm      DateTime
+  tentativas    Int       @default(1)
+  criadoEm      DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  cliente       Cliente   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([clienteId])
+  @@index([token])
+  @@index([status])
+  @@map("consentimentos")
 }
