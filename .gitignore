@@ -47,5 +47,15 @@ dist/
 # sensitive files
 .env*
 !.env.local.example
-*.sql
 dados_export.json
+
+# Data exports and backups
+*.bak
+*.backup
+
+# SQL files (except Prisma migrations)
+*.sql
+!prisma/migrations/**/*.sql
+
+# IDE - Cursor
+.cursor/
