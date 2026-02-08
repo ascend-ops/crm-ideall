@@ -40,3 +40,19 @@ div[role="tablist"].bg-secondary {
 input[cmdk-input] {
 	@apply border-none focus-visible:ring-0;
 }
+
+/* Login page animations */
+@keyframes fadeUp {
+	from { opacity: 0; transform: translateY(16px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+	from { opacity: 0; transform: translateX(-24px); }
+	to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes breathe {
+	0%, 100% { transform: scale(1); opacity: 1; }
+	50% { transform: scale(1.15); opacity: 0.7; }
+}

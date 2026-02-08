@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
 export function proxy(request: NextRequest) {
+  // Redirect root to login
+  if (request.nextUrl.pathname === "/") {
+    return NextResponse.redirect(new URL("/auth/login", request.url));
+  }
+
   const response = NextResponse.next();
 
   // Security headers

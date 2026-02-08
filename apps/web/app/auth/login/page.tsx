@@ -1,6 +1,20 @@
+import { DM_Sans, Instrument_Serif } from "next/font/google";
 import { redirect } from "next/navigation";
 import { createServerClient } from "../../../lib/supabase/server";
 import { LoginForm } from "../../../modules/saas/auth/components/LoginForm";
+
+const dmSans = DM_Sans({
+	subsets: ["latin"],
+	weight: ["300", "400", "500", "600", "700"],
+	variable: "--font-dm-sans",
+});
+
+const instrumentSerif = Instrument_Serif({
+	subsets: ["latin"],
+	weight: "400",
+	style: ["normal", "italic"],
+	variable: "--font-instrument-serif",
+});
 
 export default async function LoginPage() {
 	const supabase = await createServerClient();
@@ -10,16 +24,12 @@ export default async function LoginPage() {
 	} = await supabase.auth.getSession();
 
 	if (session) {
-		redirect("/dashboard");
+		redirect("/app/dashboard");
 	}
 
 	return (
-		<div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-			<div className="max-w-md w-full space-y-8">
-				<div className="bg-white p-8 rounded-lg shadow-md">
-					<LoginForm />
-				</div>
-			</div>
+		<div className={`${dmSans.variable} ${instrumentSerif.variable}`}>
+			<LoginForm />
 		</div>
 	);
 }
