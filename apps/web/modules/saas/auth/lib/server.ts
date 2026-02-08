@@ -32,17 +32,11 @@ export const getSession = cache(async () => {
 		} = await supabase.auth.getSession();
 
 		if (error) {
-			console.error("❌ Erro ao obter sessão do Supabase:", error);
 			return null;
 		}
 
-		console.log(
-			"🔐 Sessão no servidor (Supabase):",
-			session ? "EXISTE" : "NÃO EXISTE",
-		);
 		return session;
-	} catch (error) {
-		console.error("💥 Erro inesperado ao obter sessão:", error);
+	} catch (_error) {
 		return null;
 	}
 });
@@ -142,7 +136,6 @@ type Organization = {
 
 export const getActiveOrganization = cache(async (slug?: string): Promise<Organization | null> => {
 	// Retorna null por enquanto - você pode implementar depois
-	console.log("⚠️ getActiveOrganization chamada (retornando null)", slug);
 	return null;
 });
 

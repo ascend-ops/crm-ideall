@@ -503,30 +503,12 @@ export default function ClientesPage() {
 
 			setUser(session.user as SupabaseUser);
 
-			let role = session.user.user_metadata?.role;
-			let profileData: Profile | null = null;
-
-			if (!role) {
-				const { data } = await supabase
-					.from("profiles")
-					.select("*")
-					.eq("id", session.user.id)
-					.single();
-
-				if (data) {
-					profileData = data;
-					role = data.role;
-				}
-			} else {
-				profileData = {
-					id: session.user.id,
-					name: session.user.email
-						? session.user.email.split("@")[0]
-						: "Utilizador",
-					email: session.user.email ?? "sem-email@exemplo.com",
-					role: role,
-				};
-			}
+			// Always use profiles table as source of truth for role
+			const { data: profileData } = await supabase
+				.from("profiles")
+				.select("*")
+				.eq("id", session.user.id)
+				.single();
 
 			if (profileData) {
 				setProfile(profileData);
@@ -1369,6 +1351,17 @@ export default function ClientesPage() {
 		}
 	};
 
+	const escapeCSV = (value: string | null | undefined): string => {
+		let str = String(value ?? "");
+		// Escape double quotes
+		str = str.replace(/"/g, '""');
+		// Prevent formula injection
+		if (/^[=+\-@\t\r]/.test(str)) {
+			str = "'" + str;
+		}
+		return '"' + str + '"';
+	};
+
 	const exportToCSV = () => {
 		const headers = [
 			"Nome",
@@ -1402,8 +1395,8 @@ export default function ClientesPage() {
 		]);
 
 		const csvContent = [
-			headers.join(","),
-			...csvData.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+			headers.map((h) => escapeCSV(h)).join(","),
+			...csvData.map((row) => row.map((cell) => escapeCSV(cell)).join(",")),
 		].join("\n");
 
 		const blob = new Blob([csvContent], {

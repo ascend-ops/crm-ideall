@@ -120,12 +120,10 @@ export default function DashboardPage() {
 	const [showAllData, setShowAllData] = useState<boolean>(false);
 
 	useEffect(() => {
-		console.log("🚀 Dashboard montado - iniciando checkAuth");
 		checkAuth();
 	}, []);
 
 	const checkAuth = async () => {
-		console.group("🔐 CHECK AUTH - DASHBOARD");
 		try {
 			const {
 				data: { session },
@@ -138,32 +136,13 @@ export default function DashboardPage() {
 			}
 
 			setUser(session.user as User);
-			console.log("🔹 USER METADATA:", session.user.user_metadata);
 
-			let role = session.user.user_metadata?.role;
-			let profileData: Profile | null = null;
-
-			if (!role) {
-				const { data } = await supabase
-					.from("profiles")
-					.select("*")
-					.eq("id", session.user.id)
-					.single();
-
-				if (data) {
-					profileData = data;
-					role = data.role;
-				}
-			} else {
-				profileData = {
-					id: session.user.id,
-					name: session.user.email
-						? session.user.email.split("@")[0]
-						: "Utilizador",
-					email: session.user.email ?? "sem-email@exemplo.com",
-					role: role,
-				};
-			}
+			// Always use profiles table as source of truth for role
+			const { data: profileData } = await supabase
+				.from("profiles")
+				.select("*")
+				.eq("id", session.user.id)
+				.single();
 
 			if (profileData) {
 				setProfile(profileData);
@@ -174,15 +153,12 @@ export default function DashboardPage() {
 					await loadGestoresCards(profileData.id);
 				}
 			} else {
-				console.error("❌ Profile não encontrado");
 				router.push("/auth/login");
 			}
-		} catch (error) {
-			console.error("❌ Erro inesperado no checkAuth:", error);
+		} catch (_error) {
 			router.push("/auth/login");
 		} finally {
 			setLoading(false);
-			console.groupEnd();
 		}
 	};
 
@@ -193,17 +169,12 @@ export default function DashboardPage() {
 				.select("status, name, email, createdAt, dataFimContrato, profileId, tenantId");
 
 			if (error) {
-				console.error("❌ Erro ao carregar clientes:", error);
 				setClientes([]);
 				return;
 			}
 
-			console.log(
-				`✅ ${data?.length || 0} clientes carregados para ${userRole || "desconhecido"}`,
-			);
 			setClientes(data || []);
-		} catch (err) {
-			console.error("❌ Erro inesperado ao carregar clientes:", err);
+		} catch (_err) {
 			setClientes([]);
 		}
 	};
@@ -300,7 +271,6 @@ export default function DashboardPage() {
 			});
 
 			chartData = [allData];
-			console.log("📊 Mostrando TODOS os dados:", allData);
 		} else if (selectedMonth !== "all" && selectedYear !== "all") {
 			// Modo filtrado por mês/ano específico
 			const monthNum = Number.parseInt(selectedMonth);
@@ -334,13 +304,6 @@ export default function DashboardPage() {
 			});
 
 			chartData = [monthlyData];
-			console.log(
-				`📊 Dados filtrados para ${MONTHS[monthNum]}/${yearNum}:`,
-				{
-					totalClientes: filteredClientes.length,
-					monthlyData,
-				},
-			);
 		} else {
 			// Se algum dos filtros estiver como "all", mostrar todos os dados
 			const allData: MonthlyData = {
@@ -360,36 +323,10 @@ export default function DashboardPage() {
 			});
 
 			chartData = [allData];
-			console.log(
-				"📊 Mostrando todos os dados (filtro incompleto):",
-				allData,
-			);
 		}
 
 		setFilteredChartData(chartData);
 	}, [clientes, selectedMonth, selectedYear, showAllData]);
-
-	useEffect(() => {
-		console.log("🔄 Estado atualizado:", {
-			loading,
-			user: user?.email,
-			clientesCount: clientes.length,
-			role: profile?.role,
-			gestoresCount: gestoresCards.length,
-			selectedMonth,
-			selectedYear,
-			showAllData,
-		});
-	}, [
-		loading,
-		user,
-		clientes,
-		profile,
-		gestoresCards,
-		selectedMonth,
-		selectedYear,
-		showAllData,
-	]);
 
 	// Gerar anos disponíveis (últimos 5 anos + ano atual)
 	const currentYear = new Date().getFullYear();

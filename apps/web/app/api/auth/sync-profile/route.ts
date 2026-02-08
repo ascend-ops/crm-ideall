@@ -90,13 +90,13 @@ export async function POST(req: Request) {
 			.select();
 
 		if (error) {
-			console.error("sync-profile error", error);
+			console.error("sync-profile error");
 			return NextResponse.json({ error: "Failed to sync profile" }, { status: 500 });
 		}
 
 		return NextResponse.json({ data });
 	} catch (err) {
-		console.error("sync-profile exception", err);
+		console.error("sync-profile exception");
 		return NextResponse.json({ error: "internal" }, { status: 500 });
 	}
 }

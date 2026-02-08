@@ -231,6 +231,7 @@ model Tenant {
   profiles  Profile[]
   clientes  Cliente[]
 
+  @@unique([email])
   @@map("tenants")
 }
 
@@ -246,6 +247,7 @@ model Profile {
 
   clientes  Cliente[]
 
+  @@unique([tenantId, email])
   @@index([tenantId])
   @@map("profiles")
 }

@@ -16,12 +16,9 @@ export default async function SaaSLayout({ children }: PropsWithChildren) {
 	const locale = await getLocale();
 	const messages = await getMessages();
 
-	console.log("🔍 SaaS Layout - verificando sessão...");
 	const session = await getSession();
-	console.log("🔍 SaaS Layout - sessão:", session ? "EXISTE" : "NÃO EXISTE");
 
 	if (!session) {
-		console.log("❌ SaaS Layout - REDIRECIONANDO para login");
 		redirect("/auth/login");
 	}
 

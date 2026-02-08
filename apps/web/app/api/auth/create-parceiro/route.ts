@@ -110,7 +110,7 @@ export async function POST(req: Request) {
 			});
 
 		if (authError) {
-			console.error("Erro ao criar utilizador auth:", authError);
+			console.error("Erro ao criar utilizador auth");
 			if (authError.message?.includes("already been registered")) {
 				return NextResponse.json(
 					{ error: "Este email já está registado" },
@@ -152,7 +152,7 @@ export async function POST(req: Request) {
 				.single();
 
 		if (insertError) {
-			console.error("Erro ao criar perfil:", insertError);
+			console.error("Erro ao criar perfil");
 			// Rollback: eliminar utilizador auth se o perfil falhou
 			await serviceSupabase.auth.admin.deleteUser(authData.user.id);
 			return NextResponse.json(
@@ -166,7 +166,7 @@ export async function POST(req: Request) {
 			message: "Parceiro criado com sucesso",
 		});
 	} catch (err) {
-		console.error("create-parceiro exception:", err);
+		console.error("create-parceiro exception");
 		return NextResponse.json(
 			{ error: "Erro interno do servidor" },
 			{ status: 500 },

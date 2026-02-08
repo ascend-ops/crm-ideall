@@ -7,12 +7,9 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function Layout({ children }: PropsWithChildren) {
-	console.log("🔍 App Layout - verificando sessão...");
 	const session = await getSession();
-	console.log("🔍 App Layout - sessão:", session ? "EXISTE" : "NÃO EXISTE");
 
 	if (!session) {
-		console.log("❌ App Layout - REDIRECIONANDO para login");
 		redirect("/auth/login");
 	}
 

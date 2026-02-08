@@ -30,8 +30,11 @@ export const app = new Hono()
 	)
 	// Auth handler
 	.on(["POST", "GET"], "/auth/**", (c) => auth.handler(c.req.raw))
-	// OpenAPI schema endpoint
+	// OpenAPI schema endpoint (blocked in production)
 	.get("/openapi", async (c) => {
+		if (process.env.NODE_ENV === "production") {
+			return c.notFound();
+		}
 		const authSchema = await auth.api.generateOpenAPISchema();
 
 		const appSchema = await new OpenAPIGenerator({
@@ -68,9 +71,15 @@ export const app = new Hono()
 
 		return c.json(appSchema);
 	})
-	// Scalar API reference based on OpenAPI schema
+	// Scalar API reference (blocked in production)
 	.get(
 		"/docs",
+		(c, next) => {
+			if (process.env.NODE_ENV === "production") {
+				return c.notFound();
+			}
+			return next();
+		},
 		Scalar({
 			theme: "saturn",
 			url: "/api/openapi",

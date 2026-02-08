@@ -44,17 +44,10 @@ export function LoginForm() {
 		setLoading(true);
 		setError(null);
 
-		console.log("🔐 Tentando login com:", values.email);
-
 		try {
 			const { data, error } = await supabase.auth.signInWithPassword({
 				email: values.email,
 				password: values.password,
-			});
-
-			console.log("✅ Resposta do login:", {
-				hasSession: !!data?.session,
-				error: error?.message,
 			});
 
 			if (error) {
@@ -63,42 +56,12 @@ export function LoginForm() {
 			}
 
 			if (data.session) {
-				console.group("🎯 LOGIN BEM-SUCEDIDO");
-				console.log("Session criada:", {
-					user: data.session.user.email,
-					accessToken: data.session.access_token ? "***" : "none",
-					expiresAt: data.session.expires_at
-						? new Date(data.session.expires_at * 1000).toISOString()
-						: "N/A",
-				});
-
-				// DEBUG ESPECÍFICO - Verificar se cookies foram salvos
-				console.log("🍪 Todos os cookies:", document.cookie);
-				console.log("🔍 Cookies do Supabase:");
-				console.log(
-					"  - sb-access-token:",
-					!!document.cookie.match(/sb-access-token/),
-				);
-				console.log(
-					"  - sb-refresh-token:",
-					!!document.cookie.match(/sb-refresh-token/),
-				);
-				console.log(
-					"  - sb-provider-token:",
-					!!document.cookie.match(/sb-provider-token/),
-				);
-
-				console.log("📤 Redirecionando para /app/dashboard");
-				console.groupEnd();
-
-				// Pequeno delay para garantir que cookies são salvos
 				setTimeout(() => {
 					router.push("/app/dashboard");
 					router.refresh();
 				}, 100);
 			}
 		} catch (err: any) {
-			console.log("❌ Erro no login:", err);
 			setError(err.message || "Erro ao fazer login");
 		} finally {
 			setLoading(false);
