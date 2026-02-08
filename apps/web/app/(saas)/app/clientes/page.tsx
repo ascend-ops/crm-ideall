@@ -27,7 +27,7 @@ import {
 	Users,
 	X,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../../lib/supabase/client";
 
@@ -93,11 +93,11 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_COLORS = {
-	aprovado: "bg-green-100 text-green-800 border-green-200",
-	"em análise": "bg-yellow-100 text-yellow-800 border-yellow-200",
-	"aguarda documentos": "bg-blue-100 text-blue-800 border-blue-200",
-	reprovado: "bg-red-100 text-red-800 border-red-200",
-	fidelizado: "bg-purple-100 text-purple-800 border-purple-200",
+	aprovado: { bg: "#f0fdf4", border: "#dcfce7", text: "#15803d", dot: "#16a34a" },
+	"em análise": { bg: "#fefce8", border: "#fef9c3", text: "#a16207", dot: "#ca8a04" },
+	"aguarda documentos": { bg: "#eff6ff", border: "#dbeafe", text: "#1d4ed8", dot: "#3b82f6" },
+	reprovado: { bg: "#fef2f2", border: "#fee2e2", text: "#b91c1c", dot: "#dc2626" },
+	fidelizado: { bg: "#faf5ff", border: "#f3e8ff", text: "#7c3aed", dot: "#9333ea" },
 };
 
 // Opções de produto para dropdown
@@ -119,6 +119,7 @@ const formatDateForInput = (dateString: string | null): string => {
 
 export default function ClientesPage() {
 	const router = useRouter();
+	const searchParams = useSearchParams();
 	const [sidebarOpen, setSidebarOpen] = useState(false);
 	const [expanded, setExpanded] = useState(false);
 
@@ -205,6 +206,13 @@ export default function ClientesPage() {
 	useEffect(() => {
 		checkAuth();
 	}, []);
+
+	useEffect(() => {
+		const gestorParam = searchParams.get("gestor");
+		if (gestorParam) {
+			setSelectedGestor(gestorParam);
+		}
+	}, [searchParams]);
 
 	useEffect(() => {
 		if (selectedCliente) {
@@ -937,13 +945,18 @@ export default function ClientesPage() {
 	};
 
 	const getStatusBadge = (status: string) => {
-		const colorClass =
+		const colors =
 			STATUS_COLORS[status as keyof typeof STATUS_COLORS] ||
-			"bg-gray-100 text-gray-800 border-gray-200";
+			{ bg: "#f9fafb", border: "#e5e7eb", text: "#374151", dot: "#6b7280" };
 		return (
 			<span
-				className={`px-2 py-1 text-xs font-medium rounded-full border ${colorClass}`}
+				className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border"
+				style={{ backgroundColor: colors.bg, borderColor: colors.border, color: colors.text }}
 			>
+				<span
+					className="inline-block h-1.5 w-1.5 rounded-full flex-shrink-0"
+					style={{ backgroundColor: colors.dot }}
+				/>
 				{status.charAt(0).toUpperCase() + status.slice(1)}
 			</span>
 		);
@@ -1673,7 +1686,7 @@ export default function ClientesPage() {
 								<button
 									type="button"
 									onClick={handleAdicionarCliente}
-									className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+									className="flex items-center gap-2 px-4 py-2 bg-[#0a1628] text-white rounded-lg hover:bg-[#0f2035] transition-colors"
 								>
 									<Plus size={18} />
 									Adicionar Cliente
@@ -1683,7 +1696,7 @@ export default function ClientesPage() {
 								<button
 									type="button"
 									onClick={() => setModalAdicionarParceiroOpen(true)}
-									className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+									className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e2e8f0] text-[#334155] rounded-lg hover:bg-[#f8fafc] hover:border-[#cbd5e1] transition-colors"
 								>
 									<UserPlus size={18} />
 									Adicionar Parceiro
@@ -1696,7 +1709,7 @@ export default function ClientesPage() {
 										setModalGerirParceirosOpen(true);
 										carregarDadosGerirParceiros();
 									}}
-									className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+									className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e2e8f0] text-[#334155] rounded-lg hover:bg-[#f8fafc] hover:border-[#cbd5e1] transition-colors"
 								>
 									<Link2 size={18} />
 									Gerir Parceiros
@@ -1705,7 +1718,7 @@ export default function ClientesPage() {
 							<button
 								type="button"
 								onClick={exportToCSV}
-								className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+								className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e2e8f0] text-[#334155] rounded-lg hover:bg-[#f8fafc] hover:border-[#cbd5e1] transition-colors"
 							>
 								<Download size={18} />
 								Exportar CSV
@@ -1850,10 +1863,10 @@ export default function ClientesPage() {
 							<button
 								type="button"
 								onClick={() => setSelectedStatus("all")}
-								className={`px-3 py-1 text-sm rounded-full ${
+								className={`px-3 py-1 text-sm rounded-full border transition-colors ${
 									selectedStatus === "all"
-										? "bg-blue-600 text-white"
-										: "bg-gray-100 text-gray-700 hover:bg-gray-200"
+										? "bg-[#0a1628] text-white border-[#0a1628]"
+										: "bg-white text-[#475569] border-[#e2e8f0] hover:bg-[#f8fafc] hover:border-[#cbd5e1]"
 								}`}
 							>
 								Todos ({allClientsCount})
@@ -1865,10 +1878,10 @@ export default function ClientesPage() {
 									onClick={() =>
 										setSelectedStatus(status)
 									}
-									className={`px-3 py-1 text-sm rounded-full ${
+									className={`px-3 py-1 text-sm rounded-full border transition-colors ${
 										selectedStatus === status
-											? "bg-blue-600 text-white"
-											: "bg-gray-100 text-gray-700 hover:bg-gray-200"
+											? "bg-[#0a1628] text-white border-[#0a1628]"
+											: "bg-white text-[#475569] border-[#e2e8f0] hover:bg-[#f8fafc] hover:border-[#cbd5e1]"
 									}`}
 								>
 									{status.charAt(0).toUpperCase() +
@@ -2221,11 +2234,11 @@ export default function ClientesPage() {
 											</p>
 										</div>
 										<div
-											className={`w-12 h-12 rounded-full flex items-center justify-center ${
-												STATUS_COLORS[
-													status as keyof typeof STATUS_COLORS
-												].split(" ")[0]
-											}`}
+											className="w-12 h-12 rounded-full flex items-center justify-center"
+											style={{
+												backgroundColor: STATUS_COLORS[status as keyof typeof STATUS_COLORS]?.bg || "#f9fafb",
+												color: STATUS_COLORS[status as keyof typeof STATUS_COLORS]?.text || "#374151",
+											}}
 										>
 											<span className="text-lg font-bold">
 												{percentage}%
@@ -3008,9 +3021,7 @@ export default function ClientesPage() {
 																	backgroundColor:
 																		STATUS_COLORS[
 																			selectedCliente.status as keyof typeof STATUS_COLORS
-																		]?.split(
-																			" ",
-																		)[0] ||
+																		]?.dot ||
 																		"#6b7280",
 																}}
 															/>

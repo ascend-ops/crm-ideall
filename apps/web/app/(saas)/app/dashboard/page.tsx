@@ -78,11 +78,19 @@ const STATUS_ORDER = [
 ];
 
 const STATUS_COLORS = {
-	aprovado: "#10b981",
-	"em análise": "#f59e0b",
-	"aguarda documentos": "#6366f1",
-	reprovado: "#ef4444",
-	fidelizado: "#8b5cf6",
+	aprovado: "#16a34a",
+	"em análise": "#ca8a04",
+	"aguarda documentos": "#3b82f6",
+	reprovado: "#dc2626",
+	fidelizado: "#9333ea",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+	aprovado: "Aprovado",
+	"em análise": "Análise",
+	"aguarda documentos": "Aguarda docs",
+	reprovado: "Reprovado",
+	fidelizado: "Fidelizado",
 };
 
 const MONTHS = [
@@ -429,7 +437,7 @@ export default function DashboardPage() {
 			? monthlyData[status as keyof MonthlyData]
 			: 0;
 		return {
-			status: status.charAt(0).toUpperCase() + status.slice(1),
+			status: STATUS_LABELS[status] || status.charAt(0).toUpperCase() + status.slice(1),
 			quantidade: count,
 			fill: STATUS_COLORS[status as keyof typeof STATUS_COLORS],
 		};
@@ -611,7 +619,7 @@ export default function DashboardPage() {
 
 					<div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
 						<h2 className="text-lg font-semibold text-blue-800">
-							👋 Olá, {user.email}
+							Olá, {user.email}
 						</h2>
 						<p className="text-blue-600">
 							Total de clientes:{" "}
@@ -848,9 +856,9 @@ export default function DashboardPage() {
 								<CartesianGrid strokeDasharray="3 3" />
 								<XAxis
 									dataKey="status"
-									angle={-45}
-									textAnchor="end"
-									height={80}
+									angle={0}
+									textAnchor="middle"
+									height={40}
 									tick={{ fontSize: 12 }}
 								/>
 								<YAxis />
@@ -877,7 +885,8 @@ export default function DashboardPage() {
 										{gestoresCards.map((gestor) => (
 											<div
 												key={gestor.id}
-												className="border rounded-lg p-4 hover:shadow-md transition-shadow"
+												className="border rounded-lg p-4 hover:shadow-lg hover:border-[#cbd5e1] transition-all cursor-pointer"
+												onClick={() => router.push(`/app/clientes?gestor=${encodeURIComponent(gestor.id)}`)}
 											>
 												<div className="flex items-start gap-4">
 													<div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center border border-blue-200 shrink-0">

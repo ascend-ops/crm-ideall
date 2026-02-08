@@ -576,45 +576,49 @@ export default function GraficoAprovadosPage() {
 
 						{/* Estatísticas resumidas */}
 						<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-							<div className="bg-green-50 p-4 rounded-lg border border-green-200">
-								<p className="text-sm text-green-700">
-									Mês com mais aprovados
-								</p>
-								<p className="text-2xl font-bold text-green-800 mt-1">
-									{chartData.length > 0
-										? MONTHS[
-												chartData.reduce(
-													(maxIndex, item, index) =>
-														item.aprovados >
-														chartData[maxIndex]
-															.aprovados
-															? index
-															: maxIndex,
-													0,
-												)
-											]
-										: "-"}
-								</p>
-								<p className="text-xs text-green-600 mt-1">
+							<div className="bg-white p-4 rounded-lg border border-[#e2e8f0] border-l-[3px] border-l-[#16a34a]">
+								<div className="flex items-center justify-between">
+									<p className="text-sm font-semibold text-[#334155]">
+										Mês com mais aprovados
+									</p>
+									<p className="text-xl font-bold text-[#0f172a]">
+										{chartData.length > 0
+											? MONTHS[
+													chartData.reduce(
+														(maxIndex, item, index) =>
+															item.aprovados >
+															chartData[maxIndex]
+																.aprovados
+																? index
+																: maxIndex,
+														0,
+													)
+												]
+											: "-"}
+									</p>
+								</div>
+								<p className="text-xs text-gray-500 mt-1">
 									{chartData.length > 0
 										? `${Math.max(...chartData.map((d) => d.aprovados))} clientes`
 										: "Sem dados"}
 								</p>
 							</div>
 
-							<div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-								<p className="text-sm text-blue-700">
-									Mês atual
-								</p>
-								<p className="text-2xl font-bold text-blue-800 mt-1">
-									{new Date().getMonth() >= 0 &&
-									chartData.length > new Date().getMonth()
-										? MONTHS_ABREVIADO[
-												new Date().getMonth()
-											]
-										: "-"}
-								</p>
-								<p className="text-xs text-blue-600 mt-1">
+							<div className="bg-white p-4 rounded-lg border border-[#e2e8f0] border-l-[3px] border-l-[#ca8a04]">
+								<div className="flex items-center justify-between">
+									<p className="text-sm font-semibold text-[#334155]">
+										Mês atual
+									</p>
+									<p className="text-xl font-bold text-[#0f172a]">
+										{new Date().getMonth() >= 0 &&
+										chartData.length > new Date().getMonth()
+											? MONTHS_ABREVIADO[
+													new Date().getMonth()
+												]
+											: "-"}
+									</p>
+								</div>
+								<p className="text-xs text-gray-500 mt-1">
 									{new Date().getMonth() >= 0 &&
 									chartData.length > new Date().getMonth()
 										? `${chartData[new Date().getMonth()].aprovados} clientes`
@@ -622,33 +626,37 @@ export default function GraficoAprovadosPage() {
 								</p>
 							</div>
 
-							<div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-								<p className="text-sm text-purple-700">
-									Média mensal
-								</p>
-								<p className="text-2xl font-bold text-purple-800 mt-1">
-									{totalAprovadosAno > 0
-										? (
-												totalAprovadosAno /
-													chartData.filter(
-														(d) => d.aprovados > 0,
-													).length || 1
-											).toFixed(1)
-										: "0"}
-								</p>
-								<p className="text-xs text-purple-600 mt-1">
+							<div className="bg-white p-4 rounded-lg border border-[#e2e8f0] border-l-[3px] border-l-[#3b82f6]">
+								<div className="flex items-center justify-between">
+									<p className="text-sm font-semibold text-[#334155]">
+										Média mensal
+									</p>
+									<p className="text-xl font-bold text-[#0f172a]">
+										{totalAprovadosAno > 0
+											? (
+													totalAprovadosAno /
+														chartData.filter(
+															(d) => d.aprovados > 0,
+														).length || 1
+												).toFixed(1)
+											: "0"}
+									</p>
+								</div>
+								<p className="text-xs text-gray-500 mt-1">
 									clientes por mês
 								</p>
 							</div>
 
-							<div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
-								<p className="text-sm text-amber-700">
-									Crescimento total
-								</p>
-								<p className="text-2xl font-bold text-amber-800 mt-1">
-									{totalAprovadosAno}
-								</p>
-								<p className="text-xs text-amber-600 mt-1">
+							<div className="bg-white p-4 rounded-lg border border-[#e2e8f0] border-l-[3px] border-l-[#dc2626]">
+								<div className="flex items-center justify-between">
+									<p className="text-sm font-semibold text-[#334155]">
+										Crescimento total
+									</p>
+									<p className="text-xl font-bold text-[#0f172a]">
+										{totalAprovadosAno}
+									</p>
+								</div>
+								<p className="text-xs text-gray-500 mt-1">
 									em {selectedYear}
 								</p>
 							</div>
