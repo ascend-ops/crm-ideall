@@ -125,18 +125,23 @@ export default function ClientesPage() {
 	const [user, setUser] = useState<SupabaseUser | null>(null);
 	const [profile, setProfile] = useState<Profile | null>(null);
 	const [clientes, setClientes] = useState<Cliente[]>([]);
-	const [filteredClientes, setFilteredClientes] = useState<Cliente[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [searchTerm, setSearchTerm] = useState("");
+	const [debouncedSearch, setDebouncedSearch] = useState("");
 	const [selectedStatus, setSelectedStatus] = useState<string>("all");
 	const [selectedGestor, setSelectedGestor] = useState<string>("all");
 	const [selectedParceiro, setSelectedParceiro] = useState<string>("all");
+	const [selectedProduto, setSelectedProduto] = useState<string>("all");
 	const [sortConfig, setSortConfig] = useState<{
 		key: keyof Cliente;
 		direction: "asc" | "desc";
 	} | null>(null);
-	const [page, setPage] = useState(1);
-	const itemsPerPage = 20;
+	const [paginaAtual, setPaginaAtual] = useState(0);
+	const [totalClientes, setTotalClientes] = useState(0);
+	const clientesPorPagina = 50;
+	const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+	const [gestoresList, setGestoresList] = useState<{id: string; name: string}[]>([]);
+	const [parceirosList, setParceirosList] = useState<{id: string; name: string}[]>([]);
 
 	const [modalDetalhesOpen, setModalDetalhesOpen] = useState(false);
 	const [modalEditarOpen, setModalEditarOpen] = useState(false);
@@ -214,6 +219,17 @@ export default function ClientesPage() {
 			carregarParceirosDoGestor(profile.id);
 		}
 	}, [profile]);
+
+	// Debounce search input (300ms)
+	useEffect(() => {
+		const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+		return () => clearTimeout(timer);
+	}, [searchTerm]);
+
+	// Derive parceirosList from parceirosDoGestor (for filter dropdown)
+	useEffect(() => {
+		setParceirosList(parceirosDoGestor.map(p => ({ id: p.id, name: p.name })));
+	}, [parceirosDoGestor]);
 
 	// Função para carregar observações com dados do perfil
 	const carregarObservacoes = async (clienteId: string) => {
@@ -512,11 +528,20 @@ export default function ClientesPage() {
 
 			if (profileData) {
 				setProfile(profileData);
-				await loadClientes(profileData.role, profileData.id);
+				await loadClientes(profileData.role, profileData.id, 0);
 				if (profileData.role === "gestor") {
 					await carregarParceirosDoGestor(profileData.id);
 				} else if (profileData.role === "tenant") {
-					await carregarParceirosDoTenant(profileData.tenantId || profileData.id);
+					const tenantId = profileData.tenantId || profileData.id;
+					await carregarParceirosDoTenant(tenantId);
+					// Load gestores for filter dropdown
+					const { data: gestores } = await supabase
+						.from("profiles")
+						.select("id, name")
+						.eq("role", "gestor")
+						.eq("tenantId", tenantId)
+						.order("name");
+					setGestoresList(gestores || []);
 				}
 			} else {
 				router.push("/auth/login");
@@ -580,41 +605,119 @@ export default function ClientesPage() {
 		}
 	};
 
-	const loadClientes = async (userRole?: string, userId?: string) => {
+	const buildFilteredQuery = (
+		query: any,
+		role: string,
+		userId: string,
+		filters: {
+			status: string;
+			produto: string;
+			search: string;
+			gestorId: string;
+			parceiroId: string;
+		},
+	) => {
+		// Role filter
+		if (role === "tenant") query = query.eq("tenantId", userId);
+		else if (role === "gestor") query = query.eq("profileId", userId);
+		else if (role === "parceiro") query = query.eq("responsavelId", userId);
+
+		// Status
+		if (filters.status !== "all") query = query.eq("status", filters.status);
+
+		// Produto
+		if (filters.produto !== "all") query = query.eq("produto", filters.produto);
+
+		// Gestor (only for tenant — filter by profileId)
+		if (filters.gestorId && role === "tenant") {
+			query = query.eq("profileId", filters.gestorId);
+		}
+
+		// Parceiro (for tenant and gestor — filter by responsavelId)
+		if (filters.parceiroId && role !== "parceiro") {
+			query = query.eq("responsavelId", filters.parceiroId);
+		}
+
+		// Text search
+		if (filters.search) {
+			const term = `%${filters.search}%`;
+			query = query.or(
+				`name.ilike.${term},email.ilike.${term},telefone.ilike.${term},nif.ilike.${term},codigoPostal.ilike.${term}`,
+			);
+		}
+
+		return query;
+	};
+
+	const loadClientes = async (userRole?: string, userId?: string, pagina?: number) => {
 		try {
+			const role = userRole || profile?.role || "";
+			const uid = userId || profile?.id || "";
+			const page = pagina ?? paginaAtual;
 
-			let query = supabase.from("clientes").select("*");
+			const filters = {
+				status: selectedStatus,
+				produto: selectedProduto,
+				search: debouncedSearch,
+				gestorId: selectedGestor !== "all" ? selectedGestor : "",
+				parceiroId: selectedParceiro !== "all" ? selectedParceiro : "",
+			};
 
-			if (userRole === "tenant") {
-				// Tenant vê TODOS os clientes do SEU tenant
-				// Inclui: clientes sem profileId (seus) E clientes com profileId (dos gestores)
-				query = query.eq("tenantId", userId);
-			} else if (userRole === "gestor") {
-				// Gestor vê APENAS clientes que ELE criou (profileId = seu ID)
-				query = query.eq("profileId", userId);
-			} else if (userRole === "parceiro") {
-				// Parceiro vê APENAS clientes onde ele é o responsável
-				query = query.eq("responsavelId", userId);
+			// 1. Count query (for total with current filters)
+			let countQuery = supabase.from("clientes").select("*", { count: "exact", head: true });
+			countQuery = buildFilteredQuery(countQuery, role, uid, filters);
+			const { count } = await countQuery;
+			setTotalClientes(count || 0);
+
+			// 2. Data query with .range()
+			const from = page * clientesPorPagina;
+			const to = from + clientesPorPagina - 1;
+
+			let dataQuery = supabase.from("clientes").select("*");
+			dataQuery = buildFilteredQuery(dataQuery, role, uid, filters);
+
+			// Sorting
+			if (sortConfig) {
+				dataQuery = dataQuery.order(sortConfig.key, {
+					ascending: sortConfig.direction === "asc",
+				});
+			} else {
+				dataQuery = dataQuery.order("createdAt", { ascending: false });
 			}
 
-			const { data, error } = await query.order("createdAt", {
-				ascending: false,
-			});
+			dataQuery = dataQuery.range(from, to);
+
+			const { data, error } = await dataQuery;
 
 			if (error) {
 				console.error("Erro ao carregar clientes:", error);
 				setClientes([]);
-				setFilteredClientes([]);
 				return;
 			}
 
+			// 3. Status counts query (role filter + non-status filters, no range)
+			const statusFilters = {
+				...filters,
+				status: "all",
+			};
+			let statusQuery = supabase.from("clientes").select("status");
+			statusQuery = buildFilteredQuery(statusQuery, role, uid, statusFilters);
+			const { data: statusData } = await statusQuery;
+
+			if (statusData) {
+				const counts: Record<string, number> = {};
+				for (const row of statusData) {
+					counts[row.status] = (counts[row.status] || 0) + 1;
+				}
+				setStatusCounts(counts);
+			}
+
+			// 4. Enrichment
 			const clientesComInfo = await carregarInfosResponsaveis(data || []);
 			setClientes(clientesComInfo);
-			setFilteredClientes(clientesComInfo);
 		} catch (err) {
 			console.error("Erro inesperado ao carregar clientes:", err);
 			setClientes([]);
-			setFilteredClientes([]);
 		}
 	};
 
@@ -777,94 +880,13 @@ export default function ClientesPage() {
 		}
 	};
 
+	// Server-side: reload when filters change
 	useEffect(() => {
-		let result = [...clientes];
-
-		if (searchTerm) {
-			const term = searchTerm.toLowerCase();
-			result = result.filter(
-				(cliente) =>
-					cliente.name?.toLowerCase().includes(term) ||
-					cliente.email?.toLowerCase().includes(term) ||
-					cliente.telefone?.includes(term) ||
-					cliente.nif?.includes(term) ||
-					cliente.status?.toLowerCase().includes(term) ||
-					cliente.produto?.toLowerCase().includes(term) ||
-					cliente.codigoPostal?.includes(term),
-			);
-		}
-
-		if (selectedStatus !== "all") {
-			result = result.filter(
-				(cliente) => cliente.status === selectedStatus,
-			);
-		}
-
-		if (selectedGestor !== "all") {
-			result = result.filter(
-				(cliente) => cliente.gestorNome === selectedGestor,
-			);
-		}
-
-		if (selectedParceiro !== "all") {
-			result = result.filter(
-				(cliente) => cliente.parceiroNome === selectedParceiro,
-			);
-		}
-
-		if (sortConfig) {
-			result.sort((a, b) => {
-				const aVal = a[sortConfig.key];
-				const bVal = b[sortConfig.key];
-
-				if (aVal == null && bVal == null) {
-					return 0;
-				}
-				if (aVal == null) {
-					return sortConfig.direction === "asc" ? 1 : -1;
-				}
-				if (bVal == null) {
-					return sortConfig.direction === "asc" ? -1 : 1;
-				}
-
-				// Tratamento especial para datas
-				if (sortConfig.key === "dataFimContrato") {
-					const aDate = aVal ? new Date(aVal as string).getTime() : 0;
-					const bDate = bVal ? new Date(bVal as string).getTime() : 0;
-
-					if (aDate < bDate) {
-						return sortConfig.direction === "asc" ? -1 : 1;
-					}
-					if (aDate > bDate) {
-						return sortConfig.direction === "asc" ? 1 : -1;
-					}
-					return 0;
-				}
-
-				// Para outros campos (incluindo nome)
-				const aStr = String(aVal).toLowerCase();
-				const bStr = String(bVal).toLowerCase();
-
-				if (aStr < bStr) {
-					return sortConfig.direction === "asc" ? -1 : 1;
-				}
-				if (aStr > bStr) {
-					return sortConfig.direction === "asc" ? 1 : -1;
-				}
-				return 0;
-			});
-		}
-
-		setFilteredClientes(result);
-		setPage(1);
-	}, [
-		clientes,
-		searchTerm,
-		selectedStatus,
-		selectedGestor,
-		selectedParceiro,
-		sortConfig,
-	]);
+		if (!profile) return;
+		setPaginaAtual(0);
+		loadClientes(profile.role, profile.id, 0);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [debouncedSearch, selectedStatus, selectedGestor, selectedParceiro, selectedProduto, sortConfig]);
 
 	const handleSort = (key: keyof Cliente) => {
 		setSortConfig((current) => {
@@ -1362,73 +1384,97 @@ export default function ClientesPage() {
 		return '"' + str + '"';
 	};
 
-	const exportToCSV = () => {
-		const headers = [
-			"Nome",
-			"Email",
-			"Telefone",
-			"NIF",
-			"Status",
-			"Produto",
-			"Código Postal",
-			"Endereço",
-			"Data Criação",
-			"Data Fim Contrato",
-			"Parceiro",
-			"Gestor",
-		];
-		const csvData = filteredClientes.map((cliente) => [
-			cliente.name,
-			cliente.email,
-			cliente.telefone,
-			cliente.nif,
-			cliente.status,
-			cliente.produto,
-			cliente.codigoPostal,
-			cliente.endereco,
-			new Date(cliente.createdAt).toLocaleDateString("pt-PT"),
-			cliente.dataFimContrato
-				? new Date(cliente.dataFimContrato).toLocaleDateString("pt-PT")
-				: "-",
-			cliente.parceiroNome || "",
-			cliente.gestorNome || "-",
-		]);
+	const exportToCSV = async () => {
+		if (!profile) return;
 
-		const csvContent = [
-			headers.map((h) => escapeCSV(h)).join(","),
-			...csvData.map((row) => row.map((cell) => escapeCSV(cell)).join(",")),
-		].join("\n");
+		try {
+			// Dedicated query without range to export ALL filtered data
+			const filters = {
+				status: selectedStatus,
+				produto: selectedProduto,
+				search: debouncedSearch,
+				gestorId: selectedGestor !== "all" ? selectedGestor : "",
+				parceiroId: selectedParceiro !== "all" ? selectedParceiro : "",
+			};
 
-		const blob = new Blob([csvContent], {
-			type: "text/csv;charset=utf-8;",
-		});
-		const link = document.createElement("a");
-		const url = URL.createObjectURL(blob);
-		link.setAttribute("href", url);
-		link.setAttribute(
-			"download",
-			`clientes_${new Date().toISOString().split("T")[0]}.csv`,
-		);
-		link.style.visibility = "hidden";
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
+			let query = supabase.from("clientes").select("*");
+			query = buildFilteredQuery(query, profile.role, profile.id, filters);
+
+			if (sortConfig) {
+				query = query.order(sortConfig.key, { ascending: sortConfig.direction === "asc" });
+			} else {
+				query = query.order("createdAt", { ascending: false });
+			}
+
+			const { data, error } = await query;
+
+			if (error) {
+				console.error("Erro ao exportar:", error);
+				alert("Erro ao exportar dados");
+				return;
+			}
+
+			const allClientes = await carregarInfosResponsaveis(data || []);
+
+			const headers = [
+				"Nome",
+				"Email",
+				"Telefone",
+				"NIF",
+				"Status",
+				"Produto",
+				"Código Postal",
+				"Endereço",
+				"Data Criação",
+				"Data Fim Contrato",
+				"Parceiro",
+				"Gestor",
+			];
+			const csvData = allClientes.map((cliente) => [
+				cliente.name,
+				cliente.email,
+				cliente.telefone,
+				cliente.nif,
+				cliente.status,
+				cliente.produto,
+				cliente.codigoPostal,
+				cliente.endereco,
+				new Date(cliente.createdAt).toLocaleDateString("pt-PT"),
+				cliente.dataFimContrato
+					? new Date(cliente.dataFimContrato).toLocaleDateString("pt-PT")
+					: "-",
+				cliente.parceiroNome || "",
+				cliente.gestorNome || "-",
+			]);
+
+			const csvContent = [
+				headers.map((h) => escapeCSV(h)).join(","),
+				...csvData.map((row) => row.map((cell) => escapeCSV(cell)).join(",")),
+			].join("\n");
+
+			const blob = new Blob([csvContent], {
+				type: "text/csv;charset=utf-8;",
+			});
+			const link = document.createElement("a");
+			const url = URL.createObjectURL(blob);
+			link.setAttribute("href", url);
+			link.setAttribute(
+				"download",
+				`clientes_${new Date().toISOString().split("T")[0]}.csv`,
+			);
+			link.style.visibility = "hidden";
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+		} catch (err) {
+			console.error("Erro ao exportar:", err);
+			alert("Erro ao exportar dados");
+		}
 	};
 
-	const totalPages = Math.ceil(filteredClientes.length / itemsPerPage);
-	const startIndex = (page - 1) * itemsPerPage;
-	const endIndex = startIndex + itemsPerPage;
-	const paginatedClientes = filteredClientes.slice(startIndex, endIndex);
-
-	// Obter lista única de gestores
-	const gestoresUnicos = Array.from(
-		new Set(clientes.map((c) => c.gestorNome).filter(Boolean)),
-	).sort();
-
-	// Obter lista única de parceiros
-	const parceirosUnicos = Array.from(
-		new Set(clientes.map((c) => c.parceiroNome).filter(Boolean)),
-	).sort();
+	const totalPages = Math.ceil(totalClientes / clientesPorPagina);
+	const paginatedClientes = clientes; // Data already paginated server-side
+	const allClientsCount = Object.values(statusCounts).reduce((a, b) => a + b, 0);
 
 	if (loading) {
 		return (
@@ -1617,8 +1663,8 @@ export default function ClientesPage() {
 								)}
 							</h1>
 							<p className="text-gray-600 mt-1">
-								{clientes.length} clientes encontrados •{" "}
-								{filteredClientes.length} após filtros
+								{allClientsCount} clientes encontrados •{" "}
+								{totalClientes} após filtros
 							</p>
 						</div>
 
@@ -1731,23 +1777,17 @@ export default function ClientesPage() {
 								</label>
 								<select
 									id="product-filter"
+									value={selectedProduto}
+									onChange={(e) =>
+										setSelectedProduto(e.target.value)
+									}
 									className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-									onChange={(e) => {
-										if (e.target.value) {
-											setSearchTerm(e.target.value);
-										}
-									}}
 								>
-									<option value="">Todos os produtos</option>
-									{Array.from(
-										new Set(
-											clientes
-												.map((c) => c.produto)
-												.filter(Boolean),
-										),
-									).map((produto) => (
+									<option value="all">Todos os produtos</option>
+									{PRODUTO_OPTIONS.map((produto) => (
 										<option key={produto} value={produto}>
-											{produto}
+											{produto.charAt(0).toUpperCase() +
+												produto.slice(1)}
 										</option>
 									))}
 								</select>
@@ -1771,9 +1811,9 @@ export default function ClientesPage() {
 									<option value="all">
 										Todos os gestores
 									</option>
-									{gestoresUnicos.map((gestor) => (
-										<option key={gestor} value={gestor}>
-											{gestor}
+									{gestoresList.map((g) => (
+										<option key={g.id} value={g.id}>
+											{g.name}
 										</option>
 									))}
 								</select>
@@ -1797,9 +1837,9 @@ export default function ClientesPage() {
 									<option value="all">
 										Todos os parceiros
 									</option>
-									{parceirosUnicos.map((parceiro) => (
-										<option key={parceiro} value={parceiro}>
-											{parceiro}
+									{parceirosList.map((p) => (
+										<option key={p.id} value={p.id}>
+											{p.name}
 										</option>
 									))}
 								</select>
@@ -1816,31 +1856,26 @@ export default function ClientesPage() {
 										: "bg-gray-100 text-gray-700 hover:bg-gray-200"
 								}`}
 							>
-								Todos ({clientes.length})
+								Todos ({allClientsCount})
 							</button>
-							{STATUS_OPTIONS.map((status) => {
-								const count = clientes.filter(
-									(c) => c.status === status,
-								).length;
-								return (
-									<button
-										type="button"
-										key={status}
-										onClick={() =>
-											setSelectedStatus(status)
-										}
-										className={`px-3 py-1 text-sm rounded-full ${
-											selectedStatus === status
-												? "bg-blue-600 text-white"
-												: "bg-gray-100 text-gray-700 hover:bg-gray-200"
-										}`}
-									>
-										{status.charAt(0).toUpperCase() +
-											status.slice(1)}{" "}
-										({count})
-									</button>
-								);
-							})}
+							{STATUS_OPTIONS.map((status) => (
+								<button
+									type="button"
+									key={status}
+									onClick={() =>
+										setSelectedStatus(status)
+									}
+									className={`px-3 py-1 text-sm rounded-full ${
+										selectedStatus === status
+											? "bg-blue-600 text-white"
+											: "bg-gray-100 text-gray-700 hover:bg-gray-200"
+									}`}
+								>
+									{status.charAt(0).toUpperCase() +
+										status.slice(1)}{" "}
+									({statusCounts[status] || 0})
+								</button>
+							))}
 						</div>
 					</div>
 
@@ -2050,32 +2085,32 @@ export default function ClientesPage() {
 									<div className="text-sm text-gray-700">
 										Mostrando{" "}
 										<span className="font-medium">
-											{startIndex + 1}
+											{paginaAtual * clientesPorPagina + 1}
 										</span>{" "}
 										a{" "}
 										<span className="font-medium">
 											{Math.min(
-												endIndex,
-												filteredClientes.length,
+												(paginaAtual + 1) * clientesPorPagina,
+												totalClientes,
 											)}
 										</span>{" "}
 										de{" "}
 										<span className="font-medium">
-											{filteredClientes.length}
+											{totalClientes}
 										</span>{" "}
 										clientes
 									</div>
 									<div className="flex items-center gap-2">
 										<button
 											type="button"
-											onClick={() =>
-												setPage((p) =>
-													Math.max(1, p - 1),
-												)
-											}
-											disabled={page === 1}
+											onClick={() => {
+												const newPage = Math.max(0, paginaAtual - 1);
+												setPaginaAtual(newPage);
+												if (profile) loadClientes(profile.role, profile.id, newPage);
+											}}
+											disabled={paginaAtual === 0}
 											className={`px-3 py-1 rounded border ${
-												page === 1
+												paginaAtual === 0
 													? "bg-gray-100 text-gray-400 cursor-not-allowed"
 													: "bg-white text-gray-700 hover:bg-gray-50"
 											}`}
@@ -2092,35 +2127,38 @@ export default function ClientesPage() {
 													),
 												},
 												(_, i) => {
+													const displayPage = paginaAtual + 1;
 													let pageNum: number;
 													if (totalPages <= 5) {
 														pageNum = i + 1;
-													} else if (page <= 3) {
+													} else if (displayPage <= 3) {
 														pageNum = i + 1;
 													} else if (
-														page >=
+														displayPage >=
 														totalPages - 2
 													) {
 														pageNum =
 															totalPages - 4 + i;
 													} else {
-														pageNum = page - 2 + i;
+														pageNum = displayPage - 2 + i;
 													}
 													return (
 														<button
 															type="button"
 															key={pageNum}
-															onClick={() =>
-																setPage(pageNum)
-															}
+															onClick={() => {
+																const newPage = pageNum - 1;
+																setPaginaAtual(newPage);
+																if (profile) loadClientes(profile.role, profile.id, newPage);
+															}}
 															className={`w-8 h-8 rounded ${
-																page === pageNum
+																displayPage === pageNum
 																	? "bg-blue-600 text-white"
 																	: "bg-white text-gray-700 hover:bg-gray-100 border"
 															}`}
 															aria-label={`Ir para página ${pageNum}`}
 															aria-current={
-																page === pageNum
+																displayPage === pageNum
 																	? "page"
 																	: undefined
 															}
@@ -2138,14 +2176,14 @@ export default function ClientesPage() {
 										</div>
 										<button
 											type="button"
-											onClick={() =>
-												setPage((p) =>
-													Math.min(totalPages, p + 1),
-												)
-											}
-											disabled={page === totalPages}
+											onClick={() => {
+												const newPage = Math.min(totalPages - 1, paginaAtual + 1);
+												setPaginaAtual(newPage);
+												if (profile) loadClientes(profile.role, profile.id, newPage);
+											}}
+											disabled={paginaAtual === totalPages - 1}
 											className={`px-3 py-1 rounded border ${
-												page === totalPages
+												paginaAtual === totalPages - 1
 													? "bg-gray-100 text-gray-400 cursor-not-allowed"
 													: "bg-white text-gray-700 hover:bg-gray-50"
 											}`}
@@ -2161,12 +2199,10 @@ export default function ClientesPage() {
 
 					<div className="grid grid-cols-2 md:grid-cols-5 gap-4">
 						{STATUS_OPTIONS.map((status) => {
-							const count = clientes.filter(
-								(c) => c.status === status,
-							).length;
+							const count = statusCounts[status] || 0;
 							const percentage =
-								clientes.length > 0
-									? ((count / clientes.length) * 100).toFixed(
+								allClientsCount > 0
+									? ((count / allClientsCount) * 100).toFixed(
 											1,
 										)
 									: "0";
