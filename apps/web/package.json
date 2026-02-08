@@ -107,7 +107,7 @@
 	"private": true,
 	"scripts": {
 		"build": "next build",
-		"dev": "next dev",
+		"dev": "next dev --port 4000",
 		"e2e": "pnpm exec playwright test --ui",
 		"e2e:ci": "pnpm exec playwright install && pnpm exec playwright test",
 		"shadcn-ui": "pnpm dlx shadcn@latest",
