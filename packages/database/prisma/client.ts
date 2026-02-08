@@ -17,11 +17,14 @@ declare global {
 	var prisma: undefined | ReturnType<typeof prismaClientSingleton>;
 }
 
-// biome-ignore lint/suspicious/noRedeclare: This is a singleton
-const prisma = globalThis.prisma ?? prismaClientSingleton();
+// Lazy initialization: only create the client when first accessed, not at import time
+const db = new Proxy({} as PrismaClient, {
+	get(_target, prop) {
+		if (!globalThis.prisma) {
+			globalThis.prisma = prismaClientSingleton();
+		}
+		return (globalThis.prisma as any)[prop];
+	},
+});
 
-if (process.env.NODE_ENV !== "production") {
-	globalThis.prisma = prisma;
-}
-
-export { prisma as db };
+export { db };
