@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
+import { logAudit } from "../../../../lib/audit-log";
 
 function getServiceSupabase() {
 	const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -55,6 +56,10 @@ export async function GET() {
 		if (updateError) {
 			return NextResponse.json({ error: updateError.message }, { status: 500 });
 		}
+
+		logAudit("consent.expired_batch", "consentimento", null, null, null, null, {
+			count: ids.length,
+		});
 
 		return NextResponse.json({ actualizados: ids.length });
 	} catch (err: any) {

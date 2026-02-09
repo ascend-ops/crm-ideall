@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { logAudit } from "../../../lib/audit-log";
 import { withRateLimit } from "../../../lib/rate-limit";
 
 function getServiceSupabase() {
@@ -140,6 +141,10 @@ export async function POST(req: Request) {
 
 		const siteUrl = getSiteUrl();
 		const link = `${siteUrl}/consentimento?token=${token}`;
+
+		logAudit("consent.generated", "consentimento", clienteId, profile.id, tenantId, req, {
+			tentativa: existente ? existente.tentativas + 1 : 1,
+		});
 
 		return NextResponse.json({ token, link });
 	} catch (err: any) {

@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
+import { logAudit } from "../../../../lib/audit-log";
 import { withRateLimit } from "../../../../lib/rate-limit";
 
 function getServiceSupabase() {
@@ -83,6 +84,11 @@ export async function POST(req: Request) {
 		if (clienteError) {
 			return NextResponse.json({ error: clienteError.message }, { status: 500 });
 		}
+
+		logAudit("consent.accepted", "consentimento", consentimento.clienteId, null, null, req, {
+			consentimentoId: consentimento.id,
+			ip,
+		});
 
 		return NextResponse.json({ success: true });
 	} catch (err: any) {

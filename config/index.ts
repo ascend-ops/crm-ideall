@@ -72,7 +72,7 @@ export const config = {
 		// where users should be redirected after logout
 		redirectAfterLogout: "/",
 		// how long a session should be valid
-		sessionCookieMaxAge: 60 * 60 * 24 * 30,
+		sessionCookieMaxAge: 60 * 60 * 24 * 7,
 	},
 	// Mails
 	mails: {

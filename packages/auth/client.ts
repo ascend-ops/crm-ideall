@@ -135,7 +135,6 @@ export const authClient = {
 			return { data: await res.json(), error: null };
 		},
 		async list(): Promise<{ data: Array<{ id: string; name: string; slug: string; logo?: string | null; createdAt: Date; metadata?: unknown }> | null; error: { message: string } | null }> {
-			console.warn("organization.list not implemented");
 			return { data: [], error: null };
 		},
 		async getFullOrganization({ query }: { query: { organizationId?: string; organizationSlug?: string } }): Promise<{
@@ -151,61 +150,48 @@ export const authClient = {
 			} | null;
 			error: { message: string } | null;
 		}> {
-			console.warn("organization.getFullOrganization not implemented", query);
 			return { data: null, error: null };
 		},
 		async delete({ organizationId }: { organizationId: string }) {
-			console.warn("organization.delete not implemented", organizationId);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async removeMember({ memberIdOrEmail, organizationId }: { memberIdOrEmail: string; organizationId: string }) {
-			console.warn("organization.removeMember not implemented", memberIdOrEmail, organizationId);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async updateMemberRole({ memberId, organizationId, role }: { memberId: string; organizationId: string; role: string }) {
-			console.warn("organization.updateMemberRole not implemented", memberId, organizationId, role);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async inviteMember({ email, organizationId, role }: { email: string; organizationId: string; role: string }) {
-			console.warn("organization.inviteMember not implemented", email, organizationId, role);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async cancelInvitation({ invitationId }: { invitationId: string }) {
-			console.warn("organization.cancelInvitation not implemented", invitationId);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async rejectInvitation({ invitationId }: { invitationId: string }) {
-			console.warn("organization.rejectInvitation not implemented", invitationId);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async update({ organizationId, data }: { organizationId: string; data: Record<string, unknown> }) {
-			console.warn("organization.update not implemented", organizationId, data);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async create({ name, slug, metadata }: { name: string; slug: string; metadata?: unknown }): Promise<{ data: { id: string; name: string; slug: string } | null; error: { message: string } | null }> {
-			console.warn("organization.create not implemented", name, slug, metadata);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async setActive({ organizationId, organizationSlug }: { organizationId?: string | null; organizationSlug?: string }): Promise<{ data: { id: string; slug: string } | null; error: { message: string } | null }> {
-			console.warn("organization.setActive not implemented", organizationId, organizationSlug);
 			return { data: null, error: null };
 		},
 	},
 
 	passkey: {
 		async addPasskey(options?: { fetchOptions?: { onSuccess?: () => void; onError?: (error: unknown) => void } }) {
-			console.warn("passkey.addPasskey not implemented", options);
 			if (options?.fetchOptions?.onSuccess) {
 				options.fetchOptions.onSuccess();
 			}
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async deletePasskey({ id }: { id: string }) {
-			console.warn("passkey.deletePasskey not implemented", id);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async listUserPasskeys(): Promise<{ data: Array<{ id: string; name?: string; deviceType?: string; createdAt: Date }> | null; error: { message: string } | null }> {
-			console.warn("passkey.listUserPasskeys not implemented");
 			return { data: [], error: null };
 		},
 	},
@@ -248,51 +234,40 @@ export const authClient = {
 	},
 
 	async deleteUser(options?: Record<string, unknown>) {
-		console.warn("deleteUser not implemented", options);
 		return { data: null, error: { message: "Not implemented" } };
 	},
 
 	async unlinkAccount({ providerId }: { providerId: string }) {
-		console.warn("unlinkAccount not implemented", providerId);
 		return { data: null, error: { message: "Not implemented" } };
 	},
 
 	async linkSocial({ provider, callbackURL }: { provider: string; callbackURL?: string }) {
-		console.warn("linkSocial not implemented", provider, callbackURL);
 		return { data: null, error: { message: "Not implemented" } };
 	},
 
 	admin: {
 		async impersonateUser({ userId }: { userId: string }) {
-			console.warn("admin.impersonateUser not implemented", userId);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async stopImpersonating() {
-			console.warn("admin.stopImpersonating not implemented");
 			return { data: null, error: null };
 		},
 		async banUser({ userId }: { userId: string }) {
-			console.warn("admin.banUser not implemented", userId);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async unbanUser({ userId }: { userId: string }) {
-			console.warn("admin.unbanUser not implemented", userId);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async removeUser({ userId }: { userId: string }) {
-			console.warn("admin.removeUser not implemented", userId);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async setRole({ userId, role }: { userId: string; role: string }) {
-			console.warn("admin.setRole not implemented", userId, role);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async revokeSession({ sessionId }: { sessionId: string }) {
-			console.warn("admin.revokeSession not implemented", sessionId);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async revokeSessions({ userId }: { userId: string }) {
-			console.warn("admin.revokeSessions not implemented", userId);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async listUsers(): Promise<{
@@ -317,29 +292,24 @@ export const authClient = {
 			} | null;
 			error: { message: string } | null;
 		}> {
-			console.warn("admin.listUsers not implemented");
 			return { data: { users: [], total: 0 }, error: null };
 		},
 		async listSessions({ userId }: { userId: string }): Promise<{
 			data: Array<{ id: string; userId: string; createdAt: Date; expiresAt: Date; userAgent?: string; ipAddress?: string }> | null;
 			error: { message: string } | null;
 		}> {
-			console.warn("admin.listSessions not implemented", userId);
 			return { data: [], error: null };
 		},
 	},
 
 	twoFactor: {
 		async enable({ password }: { password: string }): Promise<{ data: { totpURI?: string; backupCodes?: string[] } | null; error: { message: string } | null }> {
-			console.warn("twoFactor.enable not implemented", password);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async disable({ password }: { password: string }) {
-			console.warn("twoFactor.disable not implemented", password);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 		async verifyTotp({ code }: { code: string }) {
-			console.warn("twoFactor.verifyTotp not implemented", code);
 			return { data: null, error: { message: "Not implemented" } };
 		},
 	},
@@ -354,7 +324,6 @@ export const authClient = {
 	},
 
 	async sendVerificationEmail({ email }: { email: string }) {
-		console.warn("sendVerificationEmail not implemented", email);
 		return { data: null, error: { message: "Not implemented" } };
 	},
 
@@ -390,17 +359,14 @@ export const authClient = {
 	},
 
 	async listAccounts(): Promise<{ data: Array<{ id: string; providerId: string }> | null; error: { message: string } | null }> {
-		console.warn("listAccounts not implemented");
 		return { data: [], error: null };
 	},
 
 	async listSessions(): Promise<{ data: Array<{ id: string; token: string; createdAt: Date; expiresAt: Date; userAgent?: string; ipAddress?: string }> | null; error: { message: string } | null }> {
-		console.warn("listSessions not implemented");
 		return { data: [], error: null };
 	},
 
 	async revokeSession({ id, token }: { id?: string; token?: string }, options?: { onSuccess?: () => void }) {
-		console.warn("revokeSession not implemented", id, token);
 		if (options?.onSuccess) {
 			options.onSuccess();
 		}
@@ -408,7 +374,6 @@ export const authClient = {
 	},
 
 	async revokeSessions() {
-		console.warn("revokeSessions not implemented");
 		return { data: null, error: null };
 	},
 

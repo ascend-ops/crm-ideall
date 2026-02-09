@@ -97,9 +97,21 @@ export async function POST(req: Request) {
 			);
 		}
 
-		if (password.length < 6) {
+		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
 			return NextResponse.json(
-				{ error: "A palavra-passe deve ter pelo menos 6 caracteres" },
+				{ error: "Formato de email inválido" },
+				{ status: 400 },
+			);
+		}
+
+		if (
+			password.length < 8 ||
+			!/[A-Z]/.test(password) ||
+			!/[a-z]/.test(password) ||
+			!/[0-9]/.test(password)
+		) {
+			return NextResponse.json(
+				{ error: "A palavra-passe deve ter pelo menos 8 caracteres, incluindo 1 maiúscula, 1 minúscula e 1 número" },
 				{ status: 400 },
 			);
 		}

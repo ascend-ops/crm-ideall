@@ -29,32 +29,37 @@ export async function GET(req: Request) {
 
 		const serviceSupabase = getServiceSupabase();
 
-		const { data: consentimento, error } = await serviceSupabase
+		const { data: consentimento } = await serviceSupabase
 			.from("consentimentos")
 			.select("id, clienteId, status, expiraEm, aceitoEm")
 			.eq("token", token)
 			.single();
 
-		if (error || !consentimento) {
-			return NextResponse.json({ error: "Token inválido" }, { status: 404 });
+		// Token inexistente — resposta idêntica a expirado para evitar enumeração
+		if (!consentimento) {
+			return NextResponse.json({ status: "invalido", expirado: false, clienteNome: null });
 		}
 
-		// Buscar nome do cliente (primeiro nome apenas)
-		const { data: cliente } = await serviceSupabase
-			.from("clientes")
-			.select("name")
-			.eq("id", consentimento.clienteId)
-			.single();
-
-		const nomeCompleto = cliente?.name || "";
-		const primeiroNome = nomeCompleto.split(" ")[0];
 		const expirado = new Date(consentimento.expiraEm) < new Date();
+		const statusFinal = expirado && consentimento.status === "pendente" ? "expirado" : consentimento.status;
+
+		// Só mostrar nome do cliente para consentimentos pendentes (não expirados)
+		let clienteNome: string | null = null;
+		if (consentimento.status === "pendente" && !expirado) {
+			const { data: cliente } = await serviceSupabase
+				.from("clientes")
+				.select("name")
+				.eq("id", consentimento.clienteId)
+				.single();
+
+			const nomeCompleto = cliente?.name || "";
+			clienteNome = nomeCompleto.split(" ")[0] || null;
+		}
 
 		return NextResponse.json({
-			status: expirado && consentimento.status === "pendente" ? "expirado" : consentimento.status,
+			status: statusFinal,
 			expirado,
-			clienteNome: primeiroNome,
-			aceitoEm: consentimento.aceitoEm,
+			clienteNome,
 		});
 	} catch (err: any) {
 		return NextResponse.json({ error: err.message || "Erro interno" }, { status: 500 });
