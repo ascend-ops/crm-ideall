@@ -1,43 +1,115 @@
-import { NextResponse, type NextRequest } from 'next/server'
+import { NextResponse, type NextRequest } from "next/server";
+
+// Rate limit configuration per API path (most specific first — find() returns first match)
+const RATE_LIMITS: Array<{
+	path: string;
+	maxRequests: number;
+	windowMs: number;
+}> = [
+	{ path: "/api/auth/sign-up", maxRequests: 5, windowMs: 300_000 },
+	{ path: "/api/auth/sign-in", maxRequests: 10, windowMs: 60_000 },
+	{ path: "/api/auth/create-parceiro", maxRequests: 5, windowMs: 300_000 },
+	{ path: "/api/consentimento/aceitar", maxRequests: 5, windowMs: 60_000 },
+	{
+		path: "/api/consentimento/verificar-expirados",
+		maxRequests: 3,
+		windowMs: 60_000,
+	},
+	{ path: "/api/consentimento/verificar", maxRequests: 15, windowMs: 60_000 },
+	{ path: "/api/consentimento", maxRequests: 10, windowMs: 60_000 },
+];
+
+// In-memory store — Edge Runtime instances persist for minutes-to-hours on Vercel,
+// significantly longer than serverless route handlers (seconds). Not distributed across
+// regions, but effective per-region rate limiting without external services.
+const store = new Map<string, { count: number; resetAt: number }>();
+
+// Cleanup expired entries every 5 minutes
+setInterval(() => {
+	const now = Date.now();
+	for (const [key, value] of store) {
+		if (now > value.resetAt) {
+			store.delete(key);
+		}
+	}
+}, 5 * 60 * 1000);
+
+function getClientIp(request: NextRequest): string {
+	const forwarded = request.headers.get("x-forwarded-for");
+	if (forwarded) return forwarded.split(",")[0].trim();
+	return "unknown";
+}
+
+function checkRateLimit(request: NextRequest): NextResponse | null {
+	const pathname = request.nextUrl.pathname;
+	const rlConfig = RATE_LIMITS.find((rl) => pathname.startsWith(rl.path));
+	if (!rlConfig) return null;
+
+	const ip = getClientIp(request);
+	const key = `${ip}:${rlConfig.path}`;
+	const now = Date.now();
+	const entry = store.get(key);
+
+	if (!entry || now > entry.resetAt) {
+		store.set(key, { count: 1, resetAt: now + rlConfig.windowMs });
+		return null;
+	}
+
+	entry.count++;
+
+	if (entry.count > rlConfig.maxRequests) {
+		const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+		return NextResponse.json(
+			{ error: "Demasiados pedidos. Tente novamente mais tarde." },
+			{ status: 429, headers: { "Retry-After": String(retryAfter) } },
+		);
+	}
+
+	return null;
+}
 
 export function proxy(request: NextRequest) {
-  // Redirect root to login
-  if (request.nextUrl.pathname === "/") {
-    return NextResponse.redirect(new URL("/auth/login", request.url));
-  }
+	// Rate limiting checked first (before any other processing)
+	const rateLimitResponse = checkRateLimit(request);
+	if (rateLimitResponse) return rateLimitResponse;
 
-  const response = NextResponse.next();
+	// Redirect root to login
+	if (request.nextUrl.pathname === "/") {
+		return NextResponse.redirect(new URL("/auth/login", request.url));
+	}
 
-  // Security headers
-  response.headers.set("X-Frame-Options", "DENY");
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  response.headers.set(
-    "Strict-Transport-Security",
-    "max-age=31536000; includeSubDomains",
-  );
-  response.headers.set(
-    "Content-Security-Policy",
-    [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://*.supabase.co",
-      "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
-      "frame-ancestors 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-    ].join("; "),
-  );
-  response.headers.set(
-    "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()",
-  );
+	const response = NextResponse.next();
 
-  return response;
+	// Security headers
+	response.headers.set("X-Frame-Options", "DENY");
+	response.headers.set("X-Content-Type-Options", "nosniff");
+	response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+	response.headers.set(
+		"Strict-Transport-Security",
+		"max-age=31536000; includeSubDomains",
+	);
+	response.headers.set(
+		"Content-Security-Policy",
+		[
+			"default-src 'self'",
+			"script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+			"style-src 'self' 'unsafe-inline'",
+			"img-src 'self' data: blob: https://*.supabase.co",
+			"font-src 'self' data:",
+			"connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+			"frame-ancestors 'none'",
+			"base-uri 'self'",
+			"form-action 'self'",
+		].join("; "),
+	);
+	response.headers.set(
+		"Permissions-Policy",
+		"camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()",
+	);
+
+	return response;
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+	matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

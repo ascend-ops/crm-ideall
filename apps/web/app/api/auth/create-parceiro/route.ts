@@ -2,7 +2,6 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { withRateLimit } from "../../../../lib/rate-limit";
 
 function getServiceSupabase() {
 	const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -49,9 +48,6 @@ async function getAuthenticatedUser() {
 }
 
 export async function POST(req: Request) {
-	const rateLimitResponse = withRateLimit(req, { maxRequests: 5, windowMs: 300_000 });
-	if (rateLimitResponse) return rateLimitResponse;
-
 	try {
 		// 1. Verificar autenticação
 		const authenticatedUser = await getAuthenticatedUser();

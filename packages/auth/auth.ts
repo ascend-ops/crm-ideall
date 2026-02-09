@@ -26,6 +26,7 @@ import { passkey } from "@better-auth/passkey";
 import { parse as parseCookies } from "cookie";
 import { updateSeatsInOrganizationSubscription } from "./lib/organization";
 import { invitationOnlyPlugin } from "./plugins/invitation-only";
+import { passwordPolicyPlugin } from "./plugins/password-policy";
 
 const getLocaleFromRequest = (request?: Request) => {
 	const cookies = parseCookies(request?.headers.get("cookie") ?? "");
@@ -423,6 +424,7 @@ export const auth = betterAuth({
 			},
 		}),
 		openAPI(),
+		passwordPolicyPlugin(),
 		invitationOnlyPlugin(),
 		twoFactor(),
 	],

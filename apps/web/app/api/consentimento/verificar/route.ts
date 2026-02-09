@@ -1,6 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { withRateLimit } from "../../../../lib/rate-limit";
 
 function getServiceSupabase() {
 	const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -16,9 +15,6 @@ function getServiceSupabase() {
 }
 
 export async function GET(req: Request) {
-	const rateLimitResponse = withRateLimit(req, { maxRequests: 15, windowMs: 60_000 });
-	if (rateLimitResponse) return rateLimitResponse;
-
 	try {
 		const { searchParams } = new URL(req.url);
 		const token = searchParams.get("token");

@@ -101,6 +101,23 @@ export const authClient = {
 				throw new Error("Password is required");
 			}
 
+			// Password policy validation (client-side defense-in-depth;
+			// server-side enforced by Supabase min length + passwordPolicyPlugin for better-auth)
+			if (
+				password.length < 8 ||
+				!/[A-Z]/.test(password) ||
+				!/[a-z]/.test(password) ||
+				!/[0-9]/.test(password)
+			) {
+				return {
+					data: { user: null, session: null },
+					error: {
+						message:
+							"A palavra-passe deve ter pelo menos 8 caracteres, incluindo 1 maiúscula, 1 minúscula e 1 número",
+					},
+				};
+			}
+
 			const res = await supabase.auth.signUp({
 				email,
 				password,
