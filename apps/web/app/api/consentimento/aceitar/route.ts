@@ -88,6 +88,6 @@ export async function POST(req: Request) {
 
 		return NextResponse.json({ success: true });
 	} catch (err: any) {
-		return NextResponse.json({ error: err.message || "Erro interno" }, { status: 500 });
+		return NextResponse.json({ error: "Erro interno" }, { status: 500 });
 	}
 }

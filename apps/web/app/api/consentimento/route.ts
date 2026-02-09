@@ -145,6 +145,6 @@ export async function POST(req: Request) {
 		return NextResponse.json({ token, link });
 	} catch (err: any) {
 		console.error("[RGPD] Erro ao gerar consentimento:", err);
-		return NextResponse.json({ error: err.message || "Erro interno" }, { status: 500 });
+		return NextResponse.json({ error: "Erro interno" }, { status: 500 });
 	}
 }

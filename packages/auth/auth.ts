@@ -156,8 +156,8 @@ export const auth = betterAuth({
 							// Inserir com id
 							try {
 								await db.$executeRaw`
-									INSERT INTO profiles (id, tenant_id, email, nome, role, created_at)
-									VALUES (${userId}, ${invitation.organizationId}, ${userEmail}, ${userName}, ${invitedRole}, NOW())
+									INSERT INTO profiles (id, "tenantId", email, name, role, "createdAt", "updatedAt")
+									VALUES (${userId}, ${invitation.organizationId}, ${userEmail}, ${userName}, ${invitedRole}, NOW(), NOW())
 									ON CONFLICT (id) DO NOTHING
 								`;
 								logger.info(
@@ -185,9 +185,9 @@ export const auth = betterAuth({
 							// Neste caso vamos inserir sem id apenas se a coluna id for gerada por banco; caso contrário, a inserção pode falhar.
 							try {
 								await db.$executeRaw`
-									INSERT INTO profiles (tenant_id, email, nome, role, created_at)
-									VALUES (${invitation.organizationId}, ${userEmail}, ${userName}, ${invitedRole}, NOW())
-									ON CONFLICT (email) DO NOTHING
+									INSERT INTO profiles ("tenantId", email, name, role, "createdAt", "updatedAt")
+									VALUES (${invitation.organizationId}, ${userEmail}, ${userName}, ${invitedRole}, NOW(), NOW())
+									ON CONFLICT ("tenantId", email) DO NOTHING
 								`;
 								logger.info(
 									"Inserted profile by email for invited user (no userId available)",
@@ -209,21 +209,21 @@ export const auth = betterAuth({
 							}
 						}
 					} else {
-						// profile já existe — se tenant_id for diferente, atualiza
+						// profile já existe — se tenantId for diferente, atualiza
 						logger.info("Profile already exists for invited user", {
 							profileId: existingProfile.id,
 							email: existingProfile.email,
-							currentTenant: existingProfile.tenant_id,
+							currentTenant: existingProfile.tenantId,
 							invitationTenant: invitation.organizationId,
 						});
 						try {
 							if (
-								existingProfile.tenant_id !==
+								existingProfile.tenantId !==
 								invitation.organizationId
 							) {
 								await db.$executeRaw`
 									UPDATE profiles
-									SET tenant_id = ${invitation.organizationId}
+									SET "tenantId" = ${invitation.organizationId}
 									WHERE id = ${existingProfile.id}
 								`;
 								logger.info(

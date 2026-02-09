@@ -63,6 +63,6 @@ export async function GET() {
 
 		return NextResponse.json({ actualizados: ids.length });
 	} catch (err: any) {
-		return NextResponse.json({ error: err.message || "Erro interno" }, { status: 500 });
+		return NextResponse.json({ error: "Erro interno" }, { status: 500 });
 	}
 }

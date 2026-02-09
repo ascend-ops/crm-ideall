@@ -58,6 +58,6 @@ export async function GET(req: Request) {
 			clienteNome,
 		});
 	} catch (err: any) {
-		return NextResponse.json({ error: err.message || "Erro interno" }, { status: 500 });
+		return NextResponse.json({ error: "Erro interno" }, { status: 500 });
 	}
 }
