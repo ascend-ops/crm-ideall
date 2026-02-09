@@ -78,7 +78,37 @@ export function proxy(request: NextRequest) {
 		return NextResponse.redirect(new URL("/auth/login", request.url));
 	}
 
-	const response = NextResponse.next();
+	// Generate per-request nonce for CSP
+	const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+	const isDev = process.env.NODE_ENV === "development";
+
+	const cspDirectives = [
+		"default-src 'self'",
+		// Production: nonce + strict-dynamic (no unsafe-inline/eval needed)
+		// Development: unsafe-eval required for React Fast Refresh / HMR
+		`script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+		// Production: nonce-based styles; Development: unsafe-inline for Turbopack style injection
+		isDev
+			? "style-src 'self' 'unsafe-inline'"
+			: `style-src 'self' 'nonce-${nonce}'`,
+		"img-src 'self' data: blob: https://*.supabase.co",
+		"font-src 'self' data:",
+		"connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+		"frame-ancestors 'none'",
+		"base-uri 'self'",
+		"form-action 'self'",
+	];
+
+	const cspHeaderValue = cspDirectives.join("; ");
+
+	// Pass nonce to server components via request header
+	const requestHeaders = new Headers(request.headers);
+	requestHeaders.set("x-nonce", nonce);
+	requestHeaders.set("Content-Security-Policy", cspHeaderValue);
+
+	const response = NextResponse.next({
+		request: { headers: requestHeaders },
+	});
 
 	// Security headers
 	response.headers.set("X-Frame-Options", "DENY");
@@ -88,20 +118,7 @@ export function proxy(request: NextRequest) {
 		"Strict-Transport-Security",
 		"max-age=31536000; includeSubDomains",
 	);
-	response.headers.set(
-		"Content-Security-Policy",
-		[
-			"default-src 'self'",
-			"script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-			"style-src 'self' 'unsafe-inline'",
-			"img-src 'self' data: blob: https://*.supabase.co",
-			"font-src 'self' data:",
-			"connect-src 'self' https://*.supabase.co wss://*.supabase.co",
-			"frame-ancestors 'none'",
-			"base-uri 'self'",
-			"form-action 'self'",
-		].join("; "),
-	);
+	response.headers.set("Content-Security-Policy", cspHeaderValue);
 	response.headers.set(
 		"Permissions-Policy",
 		"camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()",
@@ -111,5 +128,13 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-	matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+	matcher: [
+		{
+			source: "/((?!_next/static|_next/image|favicon.ico).*)",
+			missing: [
+				{ type: "header", key: "next-router-prefetch" },
+				{ type: "header", key: "purpose", value: "prefetch" },
+			],
+		},
+	],
 };
